@@ -50,9 +50,20 @@ når der udgives en ny version her på GitHub.
 - Windows SmartScreen kan advare første gang (installeren er usigneret) —
   vælg "Flere oplysninger" → "Kør alligevel".
 
-**Udgiv en ny version** (udvikler): ret `"version"` i `package.json`, og kør
-`publish-release.bat`. Den bygger installeren og lægger den på GitHub Releases —
-alle installerede apps opdaterer sig selv derefter.
+**Mac**: hent **LT-Fabrik-x.y.z-mac.dmg** fra samme Releases-side, åbn den og
+træk appen til Programmer. Da appen er usigneret, blokerer macOS første åbning:
+åbn Terminal og kør `xattr -cr "/Applications/LT Fabrik.app"` (eller på ældre
+macOS: højreklik → Åbn). Auto-opdatering virker kun på Windows — på Mac hentes
+nye versioner manuelt fra Releases.
+
+**Udgiv en ny version** (udvikler): ret `"version"` i `package.json`, commit,
+og push et tag — så bygger GitHub Actions både Windows-installer og Mac-DMG og
+lægger dem på Releases:
+
+    git tag v1.0.2 && git push origin v1.0.2
+
+Windows-apps opdaterer sig selv derefter. (`publish-release.bat` kan stadig
+bruges til en ren Windows-udgivelse fra egen maskine.)
 
 ## Alternativ: enkelt exe uden installation
 

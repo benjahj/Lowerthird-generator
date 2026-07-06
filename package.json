@@ -1,7 +1,7 @@
 {
   "name": "lt-fabrik",
   "productName": "LT Fabrik",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Lower thirds fra 16:9-slides — lokal generator uden AI",
   "main": "electron-main.js",
   "author": "benjahj",
@@ -34,6 +34,11 @@
     "win": {
       "target": "nsis",
       "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.video",
+      "artifactName": "LT-Fabrik-${version}-mac.${ext}"
     },
     "nsis": {
       "oneClick": true,

@@ -80,7 +80,8 @@ app.whenReady().then(async () => {
     return;
   }
 
-  if (app.isPackaged) setupAutoUpdate();
+  // auto-opdatering kun på Windows — på macOS kræver det Apple-signering
+  if (app.isPackaged && process.platform === 'win32') setupAutoUpdate();
 });
 
 app.on('window-all-closed', () => app.quit());
