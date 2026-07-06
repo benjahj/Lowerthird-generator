@@ -3,6 +3,10 @@ Simple but not easy/
 rEFERENCE/
 *.zip
 
+# byggede filer
+LT-Fabrik.exe
+sea-prep.blob
+
 # OS/editor
 Thumbs.db
 .DS_Store

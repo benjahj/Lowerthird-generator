@@ -1,13 +1,24 @@
 // LT Fabrik — lille lokal server uden dependencies.
 // Serverer app'en + giver adgang til billedmapper i projektmappen via /api.
+// Kan også køre som selvstændig .exe (Node SEA): app-filerne er da indlejret,
+// og billedmapper læses fra mappen ved siden af exe-filen.
 'use strict';
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = __dirname;
+let sea = null;
+try {
+  const s = require('node:sea');
+  if (s.isSea()) sea = s;
+} catch { /* almindelig node-kørsel */ }
+
+const ROOT = sea ? path.dirname(process.execPath) : __dirname;
 const PORT = process.env.PORT ? Number(process.env.PORT) : 8617;
+
+// app-filer indlejret i exe'en
+const SEA_ASSETS = { '/index.html': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css' };
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -85,6 +96,17 @@ const server = http.createServer((req, res) => {
   }
 
   let rel = pathname === '/' ? '/index.html' : pathname;
+
+  if (sea && SEA_ASSETS[rel]) {
+    const buf = Buffer.from(sea.getAsset(SEA_ASSETS[rel]));
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(rel)] || 'application/octet-stream',
+      'Cache-Control': 'no-store',
+    });
+    res.end(buf);
+    return;
+  }
+
   const file = safeJoin(rel);
   if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -101,5 +123,19 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log('LT Fabrik kører på  http://localhost:' + PORT);
-  console.log('Luk med Ctrl+C.');
+  console.log('Billedmapper læses fra: ' + ROOT);
+  console.log('Luk med Ctrl+C (eller luk dette vindue).');
+  // som .exe: åbn browseren automatisk ved dobbeltklik
+  if (sea && process.platform === 'win32' && process.env.LT_NO_OPEN !== '1') {
+    require('child_process').exec('start "" "http://localhost:' + PORT + '"', { shell: 'cmd.exe' });
+  }
+});
+
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error('Port ' + PORT + ' er optaget — kører LT Fabrik allerede? Luk den anden, eller sæt PORT=xxxx.');
+  } else {
+    console.error(e.message);
+  }
+  setTimeout(() => process.exit(1), 8000);
 });

@@ -5,7 +5,8 @@ Ingen AI, ingen API-nøgler, ingen dependencies — kun Node.js og en browser.
 
 ## Sådan bruges den
 
-1. Dobbeltklik på **start.bat** (kræver Node.js). Browseren åbner på `http://localhost:8617`.
+1. Dobbeltklik på **start.bat** (kræver Node.js) — eller byg/brug **LT-Fabrik.exe**
+   (se nedenfor), som ikke kræver noget installeret. Browseren åbner på `http://localhost:8617`.
 2. Vælg din slide-mappe i venstre side (mapper med billeder i projektmappen vises automatisk),
    brug "Vælg filer/mappe…" eller træk billeder ind. Understøtter jpg, png, webp, gif, bmp og avif.
 3. Indtast størrelsen på **Format A** (fx stream 1920×216) og evt. **Format B** (fx LED 936×208).
@@ -36,6 +37,17 @@ Ingen AI, ingen API-nøgler, ingen dependencies — kun Node.js og en browser.
   af samme slide vises grupperet i preview og navngives `_del1`, `_del2` …
 - **Pr. slide**: ombrydning, lodret placering, udelad — og indlejrede billeder
   kan slås fra ("billede: til/fra"), hvis beskæringen bliver skæv.
+
+## Som selvstændigt program (.exe)
+
+Kør **build-exe.bat** (kræver Node 22+ på byggemaskinen). Det laver `LT-Fabrik.exe`
+med app-filerne indlejret via Nodes Single Executable Application.
+
+- Læg `LT-Fabrik.exe` i en mappe sammen med dine slide-mapper og dobbeltklik —
+  serveren starter, og browseren åbner automatisk.
+- Exe-filen kræver ikke Node installeret og kan kopieres til andre Windows-maskiner.
+- Windows SmartScreen kan advare første gang (exe'en er usigneret) — vælg
+  "Kør alligevel".
 
 ## Teknik
 
