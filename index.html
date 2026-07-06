@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="da">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LT Fabrik — lower thirds fra slides</title>
+<title>LT Fabrik — lower thirds from slides</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,7 +13,7 @@
   <div class="brand">LT<em>·</em>FABRIK</div>
   <div class="brand-sub">slides &rarr; lower thirds</div>
   <div class="top-status">
-    <span id="statusText">klar</span>
+    <span id="statusText">ready</span>
     <div class="progress" id="progress"><div></div></div>
   </div>
 </header>
@@ -22,16 +22,16 @@
   <aside class="panel">
 
     <section class="sect">
-      <h2>KILDE</h2>
+      <h2>SOURCE</h2>
       <div class="row" id="rootRow" style="display:none">
-        <button class="ghost" id="pickRoot">Skift mappe-placering…</button>
+        <button class="ghost" id="pickRoot">Change folder location…</button>
       </div>
       <div class="folder-list" id="folderList"></div>
       <div class="row" style="margin-top:8px">
-        <button class="ghost" id="pickFiles">Vælg filer…</button>
-        <button class="ghost" id="pickDir">Vælg mappe…</button>
+        <button class="ghost" id="pickFiles">Choose files…</button>
+        <button class="ghost" id="pickDir">Choose folder…</button>
       </div>
-      <div class="drop" id="drop">…eller træk billeder/mappe herind<br>(jpg · png · webp · gif · bmp · avif)</div>
+      <div class="drop" id="drop">…or drag images/a folder here<br>(jpg · png · webp · gif · bmp · avif)</div>
       <input type="file" id="filePick" multiple accept="image/*" hidden>
       <input type="file" id="dirPick" webkitdirectory hidden>
     </section>
@@ -39,9 +39,9 @@
     <section class="sect">
       <h2>FORMAT A · STREAM</h2>
       <div class="row">
-        <div class="field"><span>Bredde px</span><input type="number" id="outW" value="1920" min="64" step="2"></div>
-        <div class="field"><span>Højde px</span><input type="number" id="outH" value="216" min="32" step="2"></div>
-        <div class="field"><span>Endelse</span><input type="text" id="suffixA" value="_stream"></div>
+        <div class="field"><span>Width px</span><input type="number" id="outW" value="1920" min="64" step="2"></div>
+        <div class="field"><span>Height px</span><input type="number" id="outH" value="216" min="32" step="2"></div>
+        <div class="field"><span>Suffix</span><input type="text" id="suffixA" value="_stream"></div>
       </div>
       <div class="presets" id="presets">
         <button class="chip on" data-w="1920" data-h="216">1920×216 · 20%</button>
@@ -52,106 +52,106 @@
     </section>
 
     <section class="sect">
-      <h2>FORMAT B · LED-SKÆRM</h2>
+      <h2>FORMAT B · LED SCREEN</h2>
       <div class="row">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="fmtBOn" checked> Lav også format B
+          <input type="checkbox" id="fmtBOn" checked> Also create format B
         </label>
       </div>
       <div class="row" id="fmtBRow">
-        <div class="field"><span>Bredde px</span><input type="number" id="outW2" value="936" min="64" step="2"></div>
-        <div class="field"><span>Højde px</span><input type="number" id="outH2" value="208" min="32" step="2"></div>
-        <div class="field"><span>Endelse</span><input type="text" id="suffixB" value="_led"></div>
+        <div class="field"><span>Width px</span><input type="number" id="outW2" value="936" min="64" step="2"></div>
+        <div class="field"><span>Height px</span><input type="number" id="outH2" value="208" min="32" step="2"></div>
+        <div class="field"><span>Suffix</span><input type="text" id="suffixB" value="_led"></div>
       </div>
-      <div class="hint">Teksten ombrydes ens på A og B — der kommer aldrig mere eller mindre tekst på det ene format end det andet.</div>
+      <div class="hint">Both formats always carry exactly the same text — never more or less on one of them. Line breaks and text size adapt to each format.</div>
     </section>
 
     <section class="sect">
-      <h2>TEKST &amp; LAYOUT</h2>
+      <h2>TEXT &amp; LAYOUT</h2>
       <div class="row">
-        <label for="layoutMode">Ombrydning</label>
-        <select id="layoutMode" style="width:130px" title="Auto vælger den ombrydning, der giver størst tekst">
-          <option value="auto">Auto (bedst)</option>
-          <option value="wrap">Ombryd ord</option>
-          <option value="stack">Behold linjer</option>
-          <option value="oneline">Én linje</option>
+        <label for="layoutMode">Wrapping</label>
+        <select id="layoutMode" style="width:130px" title="Auto picks the wrapping that gives the largest text">
+          <option value="auto">Auto (best)</option>
+          <option value="wrap">Rewrap words</option>
+          <option value="stack">Keep lines</option>
+          <option value="oneline">One line</option>
         </select>
       </div>
       <div class="row">
-        <label for="alignH">Justering</label>
+        <label for="alignH">Alignment</label>
         <select id="alignH" style="width:130px">
-          <option value="center" selected>Centreret</option>
-          <option value="left">Venstre</option>
+          <option value="center" selected>Centered</option>
+          <option value="left">Left</option>
         </select>
       </div>
       <div class="row">
-        <label for="charLimit">Max tegn pr. del</label>
+        <label for="charLimit">Max characters per part</label>
         <input type="number" id="charLimit" value="200" min="40" max="400" step="5" style="width:130px"
-          title="Slides med mere tekst deles i flere lower thirds — aldrig midt i et vers">
+          title="Slides with more text are split into several lower thirds — never in the middle of a verse">
       </div>
     </section>
 
     <details class="sect adv">
-      <summary>AVANCERET</summary>
+      <summary>ADVANCED</summary>
       <div class="row" style="margin-top:10px">
-        <label for="maxScale">Max tekst-forstørrelse</label>
-        <select id="maxScale" style="width:130px" title="Hvor meget teksten højst må forstørres i forhold til originalen">
-          <option value="1">1,0×</option>
-          <option value="1.5">1,5×</option>
-          <option value="2" selected>2,0×</option>
-          <option value="3">3,0×</option>
+        <label for="maxScale">Max text upscaling</label>
+        <select id="maxScale" style="width:130px" title="How much the text may be enlarged compared to the original">
+          <option value="1">1.0×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2" selected>2.0×</option>
+          <option value="3">3.0×</option>
         </select>
       </div>
       <div class="row">
-        <label for="bgMode">Baggrund</label>
-        <select id="bgMode" style="width:130px" title="Auto genbruger slidens egen tekstur som baggrund">
-          <option value="auto">Auto (tekstur)</option>
-          <option value="color">Ensfarvet</option>
+        <label for="bgMode">Background</label>
+        <select id="bgMode" style="width:130px" title="Auto reuses the slide's own texture as background">
+          <option value="auto">Auto (texture)</option>
+          <option value="color">Solid color</option>
         </select>
       </div>
       <div class="row">
-        <label for="sidebarMode">Fast ramme/logo</label>
-        <select id="sidebarMode" style="width:130px" title="Logo-søjler m.m. der er ens på alle slides">
-          <option value="keep">Behold (skalér)</option>
-          <option value="hide">Skjul</option>
+        <label for="sidebarMode">Fixed frame/logo</label>
+        <select id="sidebarMode" style="width:130px" title="Logo bars etc. that are identical on every slide">
+          <option value="keep">Keep (scale)</option>
+          <option value="hide">Hide</option>
         </select>
       </div>
       <div class="row">
-        <label for="furnitureMode">Sidetal m.m.</label>
+        <label for="furnitureMode">Page numbers etc.</label>
         <select id="furnitureMode" style="width:130px">
-          <option value="keep">Behold i hjørne</option>
-          <option value="drop" selected>Fjern</option>
+          <option value="keep">Keep in corner</option>
+          <option value="drop" selected>Remove</option>
         </select>
       </div>
       <div class="row">
-        <div class="field"><span>Luft i kanten px</span><input type="number" id="pad" value="28" min="0" step="2"></div>
-        <div class="field"><span>Filtype</span>
+        <div class="field"><span>Edge padding px</span><input type="number" id="pad" value="28" min="0" step="2"></div>
+        <div class="field"><span>File type</span>
           <select id="format">
             <option value="png">PNG</option>
-            <option value="jpeg">JPG (kvalitet 92)</option>
+            <option value="jpeg">JPG (quality 92)</option>
           </select>
         </div>
       </div>
 
-      <div class="adv-sub">RAMME · AUTO-DETEKTERET</div>
+      <div class="adv-sub">FRAME · AUTO-DETECTED</div>
       <div class="row">
-        <div class="field"><span>Venstre %</span><input type="number" id="mLeft" value="0" min="0" max="25" step="0.1"></div>
-        <div class="field"><span>Højre %</span><input type="number" id="mRight" value="0" min="0" max="25" step="0.1"></div>
+        <div class="field"><span>Left %</span><input type="number" id="mLeft" value="0" min="0" max="25" step="0.1"></div>
+        <div class="field"><span>Right %</span><input type="number" id="mRight" value="0" min="0" max="25" step="0.1"></div>
       </div>
       <div class="row">
         <div class="field"><span>Top %</span><input type="number" id="mTop" value="0" min="0" max="25" step="0.1"></div>
-        <div class="field"><span>Bund %</span><input type="number" id="mBottom" value="0" min="0" max="25" step="0.1"></div>
+        <div class="field"><span>Bottom %</span><input type="number" id="mBottom" value="0" min="0" max="25" step="0.1"></div>
       </div>
-      <div class="hint">Rammen er de kanter, der er ens på alle slides (fx logo-søjlen). Den genskabes på hver lower third. Justér og tryk på knappen, hvis auto-resultatet ikke passer.</div>
+      <div class="hint">The frame is the edges that are identical on every slide (e.g. a logo bar). It is recreated on every lower third. Adjust and press the button if the auto result is off.</div>
       <div class="row" style="margin-top:10px">
-        <button class="ghost" id="reanalyze">Analysér igen med disse værdier</button>
+        <button class="ghost" id="reanalyze">Re-analyze with these values</button>
       </div>
     </details>
 
     <section class="sect">
-      <h2>EKSPORT</h2>
-      <div class="row"><button class="big" id="exportDir" disabled>Gem alle i mappe…</button></div>
-      <div class="row"><button class="ghost" id="exportZip" disabled>Download som ZIP</button></div>
+      <h2>EXPORT</h2>
+      <div class="row"><button class="big" id="exportDir" disabled>Save all to folder…</button></div>
+      <div class="row"><button class="ghost" id="exportZip" disabled>Download as ZIP</button></div>
       <div class="hint" id="exportHint"></div>
     </section>
 
@@ -160,11 +160,11 @@
   <main class="main" id="main">
     <div class="empty" id="emptyState">
       <div class="logo">LT<em>·</em>FABRIK</div>
-      <p class="empty-lead">Slides ind — lower thirds ud. Uden at teksten nogensinde ændres.</p>
+      <p class="empty-lead">Slides in — lower thirds out. Without ever changing the text.</p>
       <ol class="steps">
-        <li><b>Vælg dine slides</b><span>Klik på en mappe i venstre side, eller træk billeder herind.</span></li>
-        <li><b>Tjek preview</b><span>Alt analyseres automatisk — logoer, tekst og opdeling i dele. Klik på et preview for at se det stort.</span></li>
-        <li><b>Gem</b><span>Én knap eksporterer alle lower thirds i begge formater.</span></li>
+        <li><b>Pick your slides</b><span>Click a folder on the left, or drag images in here.</span></li>
+        <li><b>Check the previews</b><span>Everything is analyzed automatically — logos, text and splitting into parts. Click a preview to see it full size.</span></li>
+        <li><b>Save</b><span>One button exports every lower third in both formats.</span></li>
       </ol>
     </div>
     <div class="deck-head" id="deckHead" style="display:none">

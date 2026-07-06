@@ -95,7 +95,7 @@ async function loadServerFolders() {
     const list = $('folderList');
     list.innerHTML = '';
     if (!folders.length) {
-      list.innerHTML = '<div class="hint">Ingen billedmapper fundet ved siden af appen. Læg en mappe med slides i projektmappen, eller træk billeder ind herunder.</div>';
+      list.innerHTML = '<div class="hint">No image folders found next to the app. Put a folder of slides there, or drag images in below.</div>';
       return;
     }
     for (const f of folders) {
@@ -111,7 +111,7 @@ async function loadServerFolders() {
       list.appendChild(b);
     }
   } catch {
-    $('folderList').innerHTML = '<div class="hint">Kunne ikke hente mappelisten (kører du via start.bat?). Træk billeder ind herunder i stedet.</div>';
+    $('folderList').innerHTML = '<div class="hint">Could not load the folder list. Drag images in below instead.</div>';
   }
 }
 
@@ -119,7 +119,7 @@ async function loadServerFolder(dir) {
   const res = await fetch('/api/files?dir=' + encodeURIComponent(dir));
   const files = res.ok ? await res.json() : null;
   if (!Array.isArray(files) || !files.length) {
-    toast('Mappen kunne ikke læses — er den flyttet eller slettet?', true);
+    toast('The folder could not be read — has it been moved or deleted?', true);
     return;
   }
   const slides = files.map((name) => ({
@@ -135,9 +135,9 @@ async function loadFiles(fileList) {
   const files = [...fileList]
     .filter((f) => /image\/(jpeg|png|webp|gif|bmp|avif)/.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(f.name))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
-  if (!files.length) { toast('Ingen billedfiler fundet i det, du trak ind.', true); return; }
+  if (!files.length) { toast('No image files found in what you dropped.', true); return; }
   const slides = files.map((f) => ({ name: f.name, src: { file: f }, ov: { mode: 'auto', off: 0, on: true, img: true } }));
-  S.deckName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : 'Egne billeder';
+  S.deckName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : 'My images';
   await ingest(slides);
 }
 
@@ -164,7 +164,7 @@ async function ingest(slides) {
 async function analyzeDeck() {
   const n = S.slides.length;
   if (!n) return;
-  setStatus('analyserer…', true, 0);
+  setStatus('analyzing…', true, 0);
   const token = ++S.renderToken;
 
   const cv = new OffscreenCanvas(AW, AH);
@@ -212,7 +212,7 @@ async function analyzeDeck() {
     const re = new Float32Array(AH);
     for (let r = 1; r < AH; r++) re[r] = rowCnt[r] / AW;
     colEdge.push(ce); rowEdge.push(re);
-    setStatus(`analyserer ${i + 1}/${n}`, true, (i + 1) / (n * 2));
+    setStatus(`analyzing ${i + 1}/${n}`, true, (i + 1) / (n * 2));
     if (i % 4 === 3) await new Promise((r) => setTimeout(r));
   }
 
@@ -222,8 +222,8 @@ async function analyzeDeck() {
     S.slides = S.slides.filter((sl) => !sl._bad);
     S.cardSig = null;
     buildCards(null);
-    toast(`${bad.length} fil(er) kunne ikke læses og blev sprunget over: ${bad.slice(0, 3).join(', ')}${bad.length > 3 ? ' …' : ''}`, true);
-    if (!S.slides.length) { setStatus('ingen brugbare billeder', false, null); return; }
+    toast(`${bad.length} file(s) could not be read and were skipped: ${bad.slice(0, 3).join(', ')}${bad.length > 3 ? ' …' : ''}`, true);
+    if (!S.slides.length) { setStatus('no usable images', false, null); return; }
   }
 
   if (!S.manualFrame) {
@@ -268,7 +268,7 @@ async function analyzeDeck() {
       sl.ana = sl.ana || { photo: true, bg: [0, 0, 0], lines: [], decos: [], furniture: [], images: [], band: null, cx0: 0, cy0: 0, cw: AW, ch: AH, kx: (sl.w || 1920) / AW, ky: (sl.h || 1080) / AH };
     }
     sl._layout = null;
-    setStatus(`læser indhold ${i + 1}/${n2}`, true, 0.5 + (i + 1) / (n2 * 2));
+    setStatus(`reading content ${i + 1}/${n2}`, true, 0.5 + (i + 1) / (n2 * 2));
     if (i % 8 === 7) await new Promise((r) => setTimeout(r));
   }
   if (token !== S.renderToken) return; // nyt deck kan være indlæst under sidste await
@@ -277,8 +277,8 @@ async function analyzeDeck() {
   $('exportDir').disabled = !window.showDirectoryPicker;
   $('exportZip').disabled = false;
   $('exportHint').textContent = window.showDirectoryPicker
-    ? 'Gemmer én fil pr. slide pr. format direkte i en mappe, du vælger.'
-    : 'Din browser understøtter ikke direkte mappe-adgang — brug ZIP.';
+    ? 'Saves one file per slide per format directly to a folder you choose.'
+    : 'Your browser does not support direct folder access — use ZIP.';
   renderAll();
 }
 
@@ -1165,11 +1165,11 @@ function queueRender(sl) {
       const x = renderQueue.shift();
       try { await renderOne(x); } catch (e) { console.error(x.name, e); }
       done++;
-      if (renderQueue.length) setStatus(`renderer ${done}/${done + renderQueue.length}`, true, done / (done + renderQueue.length));
+      if (renderQueue.length) setStatus(`rendering ${done}/${done + renderQueue.length}`, true, done / (done + renderQueue.length));
       await new Promise((r) => setTimeout(r));
     }
     queuePumping = false;
-    setStatus(`klar · ${S.totalParts || S.slides.length} lower thirds`, false, null);
+    setStatus(`ready · ${S.totalParts || S.slides.length} lower thirds`, false, null);
   })();
 }
 
@@ -1201,13 +1201,13 @@ function buildCards(counts) {
     if (nParts > 1) {
       const tag = document.createElement('div');
       tag.className = 'group-tag';
-      tag.textContent = `1 slide → ${nParts} dele, vises i rækkefølge`;
+      tag.textContent = `1 slide → ${nParts} parts, shown in order`;
       group.appendChild(tag);
     }
     for (let pi = 0; pi < nParts; pi++) {
       const card = document.createElement('div');
       card.className = 'card';
-      const partLbl = nParts > 1 ? ` · del ${pi + 1}/${nParts}` : '';
+      const partLbl = nParts > 1 ? ` · part ${pi + 1}/${nParts}` : '';
       card.innerHTML = `
         <div class="mon"><span class="tick-a"></span><span class="tick-b"></span>
           <canvas class="out fmt-a"></canvas>
@@ -1225,34 +1225,34 @@ function buildCards(counts) {
     ctrls.innerHTML = `
       <select>
         <option value="auto">Auto</option>
-        <option value="wrap">Ombryd</option>
-        <option value="stack">Linjer</option>
-        <option value="oneline">Én linje</option>
-        <option value="crop">Beskær</option>
+        <option value="wrap">Rewrap</option>
+        <option value="stack">Lines</option>
+        <option value="oneline">One line</option>
+        <option value="crop">Crop</option>
       </select>
-      <div class="sl"><span>lodret</span><input type="range" min="-100" max="100" value="0"></div>
+      <div class="sl"><span>vertical</span><input type="range" min="-100" max="100" value="0"></div>
       <button class="skip imgbtn" style="display:none"></button>
-      <button class="skip">udelad</button>`;
+      <button class="skip">exclude</button>`;
     const sel = ctrls.querySelector('select');
     sel.value = sl.ov.mode;
     sel.addEventListener('change', () => { sl.ov.mode = sel.value; renderAllSoon(); });
     const rng = ctrls.querySelector('input[type=range]');
     rng.value = sl.ov.off;
-    rng.title = 'Lodret placering — dobbeltklik nulstiller';
+    rng.title = 'Vertical position — double-click resets';
     rng.addEventListener('input', debounce(() => { sl.ov.off = +rng.value; renderOne(sl); }, 80));
     rng.addEventListener('dblclick', () => { rng.value = 0; sl.ov.off = 0; renderOne(sl); });
     // til/fra for indlejrede billeder — vises kun når sliden har nogen
     const imgBtn = ctrls.querySelector('.imgbtn');
-    imgBtn.textContent = sl.ov.img === false ? 'billede: fra' : 'billede: til';
+    imgBtn.textContent = sl.ov.img === false ? 'image: off' : 'image: on';
     imgBtn.addEventListener('click', () => {
       sl.ov.img = sl.ov.img === false;
-      imgBtn.textContent = sl.ov.img ? 'billede: til' : 'billede: fra';
+      imgBtn.textContent = sl.ov.img ? 'image: on' : 'image: off';
       renderOne(sl);
     });
     ctrls.querySelector('.skip:not(.imgbtn)').addEventListener('click', () => {
       sl.ov.on = !sl.ov.on;
       sl._cards.forEach((c) => c.classList.toggle('off', !sl.ov.on));
-      ctrls.querySelector('.skip:not(.imgbtn)').textContent = sl.ov.on ? 'udelad' : 'medtag';
+      ctrls.querySelector('.skip:not(.imgbtn)').textContent = sl.ov.on ? 'exclude' : 'include';
     });
     sl._ctrls = ctrls;
     group.appendChild(ctrls);
@@ -1311,7 +1311,7 @@ async function renderAll() {
     sl._dirty = true;
     if (sl._visible) { sl._dirty = false; queueRender(sl); }
   }
-  if (!renderQueue.length && !queuePumping) setStatus(`klar · ${S.totalParts} lower thirds`, false, null);
+  if (!renderQueue.length && !queuePumping) setStatus(`ready · ${S.totalParts} lower thirds`, false, null);
 }
 
 const renderAllSoon = debounce(renderAll, 200);
@@ -1320,7 +1320,7 @@ const renderAllSoon = debounce(renderAll, 200);
 
 function outName(sl, s, fmt, pi, nParts) {
   const base = sl.name.replace(/\.[^.]+$/, '');
-  return base + (nParts > 1 ? `_del${pi + 1}` : '') + fmt.suffix + (s.format === 'png' ? '.png' : '.jpg');
+  return base + (nParts > 1 ? `_part${pi + 1}` : '') + fmt.suffix + (s.format === 'png' ? '.png' : '.jpg');
 }
 
 async function slideBlob(sl, s, fmt, rows, mode) {
@@ -1351,13 +1351,13 @@ async function* exportBlobs(s, list) {
 }
 
 async function exportToDir() {
-  if (!S.analyzed) { toast('Vent til analysen er færdig, før du eksporterer.', true); return; }
+  if (!S.analyzed) { toast('Please wait for the analysis to finish before exporting.', true); return; }
   const s = getSettings();
   let dir;
   try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); } catch { return; }
   const list = S.slides.filter((x) => x.ov.on);
   const totalFiles = exportCount(s, list);
-  setStatus('eksporterer…', true, 0);
+  setStatus('exporting…', true, 0);
   let done = 0;
   try {
     for await (const { name, blob } of exportBlobs(s, list)) {
@@ -1366,13 +1366,13 @@ async function exportToDir() {
       await w.write(blob);
       await w.close();
       done++;
-      setStatus(`eksporterer ${done}/${totalFiles}`, true, done / totalFiles);
+      setStatus(`exporting ${done}/${totalFiles}`, true, done / totalFiles);
     }
-    setStatus('klar', false, null);
-    toast(`${done} filer gemt i "${dir.name}".`);
+    setStatus('ready', false, null);
+    toast(`${done} files saved to "${dir.name}".`);
   } catch (e) {
-    setStatus('klar', false, null);
-    toast('Eksport afbrudt: ' + e.message, true);
+    setStatus('ready', false, null);
+    toast('Export interrupted: ' + e.message, true);
   }
 }
 
@@ -1440,17 +1440,17 @@ function zipWriter() {
 }
 
 async function exportZip() {
-  if (!S.analyzed) { toast('Vent til analysen er færdig, før du eksporterer.', true); return; }
+  if (!S.analyzed) { toast('Please wait for the analysis to finish before exporting.', true); return; }
   const s = getSettings();
   const list = S.slides.filter((x) => x.ov.on);
   const totalFiles = exportCount(s, list);
-  setStatus('pakker zip…', true, 0);
+  setStatus('packing zip…', true, 0);
   const zw = zipWriter();
   let packed = 0;
   for await (const { name, blob } of exportBlobs(s, list)) {
     zw.add(name, new Uint8Array(await blob.arrayBuffer()));
     packed++;
-    setStatus(`pakker ${packed}/${totalFiles}`, true, packed / totalFiles);
+    setStatus(`packing ${packed}/${totalFiles}`, true, packed / totalFiles);
   }
   const zip = zw.finish();
   const a = document.createElement('a');
@@ -1458,8 +1458,8 @@ async function exportZip() {
   a.download = (S.deckName || 'lower-thirds').replace(/[^\w æøåÆØÅ-]+/g, ' ').trim() + '_lower-thirds.zip';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-  setStatus('klar', false, null);
-  toast(`ZIP med ${packed} filer downloadet.`);
+  setStatus('ready', false, null);
+  toast(`ZIP with ${packed} files downloaded.`);
 }
 
 /* ---------------------------------- events --------------------------------- */
@@ -1522,7 +1522,7 @@ $('grid').addEventListener('click', async (e) => {
   if (!fmt) return;
   await drawSlide(sl, s, fmt, $('lightCanvas'), (L.rows[pi] || [])[fi] || null, L.mode, 1);
   $('lightMeta').textContent =
-    `${sl.name}${L.parts.length > 1 ? ` · del ${pi + 1}/${L.parts.length}` : ''} · ${fmt.W}×${fmt.H} px · klik eller Esc for at lukke`;
+    `${sl.name}${L.parts.length > 1 ? ` · part ${pi + 1}/${L.parts.length}` : ''} · ${fmt.W}×${fmt.H} px · click or Esc to close`;
   $('lightbox').classList.add('on');
 });
 $('lightbox').addEventListener('click', () => $('lightbox').classList.remove('on'));
@@ -1537,7 +1537,7 @@ $('reanalyze').addEventListener('click', async () => {
   $('mBottom').value = (S.frame.b * 100).toFixed(1);
   S.manualFrame = true;
   if (!S.slides.length) return;
-  setStatus('analyserer igen…', true, 0);
+  setStatus('re-analyzing…', true, 0);
   for (const sl of S.slides) if (sl.small) { analyzeSlide(sl); await refineSlide(sl); }
   renderAll();
 });
@@ -1591,4 +1591,4 @@ window.__lt = { S, loadServerFolder, renderAll, getSettings, resolveMode, geomFo
 
 restoreSettings();
 loadServerFolders();
-setStatus('klar — vælg en mappe', false, null);
+setStatus('ready — pick a folder', false, null);

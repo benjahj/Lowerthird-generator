@@ -1,78 +1,85 @@
-# LT Fabrik — lower thirds fra slides
+# LT Fabrik — lower thirds from slides
 
-Lokal web-app der laver 16:9-slides om til lower thirds i valgfri størrelse.
-Ingen AI, ingen API-nøgler, ingen dependencies — kun Node.js og en browser.
+Local app that turns 16:9 slide images into lower thirds in any size you choose.
+No AI, no API keys, no dependencies — and it works fully **offline**.
 
-## Sådan bruges den
+## Install as a Windows app (recommended)
 
-1. Dobbeltklik på **start.bat** (kræver Node.js) — eller byg/brug **LT-Fabrik.exe**
-   (se nedenfor), som ikke kræver noget installeret. Browseren åbner på `http://localhost:8617`.
-2. Vælg din slide-mappe i venstre side (mapper med billeder i projektmappen vises automatisk),
-   brug "Vælg filer/mappe…" eller træk billeder ind. Understøtter jpg, png, webp, gif, bmp og avif.
-3. Indtast størrelsen på **Format A** (fx stream 1920×216) og evt. **Format B** (fx LED 936×208).
-   Teksten ombrydes ens på begge formater — aldrig mere tekst på det ene end det andet.
-4. Kig previews igennem — justér pr. slide hvis nødvendigt (ombrydning, lodret placering, udelad).
-5. Tryk **Gem alle i mappe…** (Chrome/Edge) eller **Download som ZIP** — én fil pr. slide pr. format.
+Download **LT-Fabrik-Setup-x.y.z.exe** from
+[Releases](https://github.com/benjahj/Lowerthird-generator/releases/latest) and run it.
+The app installs with a start-menu shortcut and **keeps itself up to date**: when a
+new version is published here, it asks *"Would you like to update now?"* with
+**Update now** / **Remind me later**. Everything else works without internet.
 
-## Hvad den gør automatisk
+- First run: click "Change folder location…" and pick the folder that contains
+  your slide folders — the choice is remembered.
+- Windows SmartScreen may warn the first time (the installer is unsigned) —
+  choose "More info" → "Run anyway".
 
-- **Fast ramme**: Alle slides sammenlignes pixel for pixel. Kanter der er ens på tværs af
-  hele decket (fx logo-søjlen i højre side) genkendes som "ramme" og genskabes på hver
-  lower third — så det ikke ser ud som et udklip. Kan finjusteres i panelet.
-- **Tekst uden AI**: Baggrundsfarven estimeres pr. slide, og tekstlinjer/ord findes via
-  billedanalyse. Teksten klippes ud som bitmaps, så den originale typografi, farver og
-  understregninger bevares 1:1.
-- **Ombrydning**: Ordene ombrydes til det antal linjer, der giver den største tekst i
-  lower third-formatet. "Auto" foretrækker de originale linjeskift, når de er næsten
-  lige så gode.
-- **Baggrundstekstur**: Et tomt bånd fra sliden genbruges som baggrund, så papir-tekstur
-  o.l. følger med (spejl-fliselagt, aldrig udtværet).
-- **Foto-slides**: Slides der mest består af foto beskæres pænt til formatet i stedet
-  (lodret placering kan justeres pr. slide).
-- **Hjørne-elementer**: Sidetal o.l. kan beholdes i samme hjørne eller fjernes.
-- **Vers-bevidst opdeling**: Slides med meget tekst deles i flere lower thirds
-  (grænse: "Max tegn pr. del", brede tegn tæller mere). Der deles aldrig midt i
-  et vers (hævede versnumre detekteres i billedet), et helt vers blandes aldrig
-  med en stump af et andet, og skriftsteds-chippen gentages på alle dele. Dele
-  af samme slide vises grupperet i preview og navngives `_del1`, `_del2` …
-- **Pr. slide**: ombrydning, lodret placering, udelad — og indlejrede billeder
-  kan slås fra ("billede: til/fra"), hvis beskæringen bliver skæv.
+**Mac**: download **LT-Fabrik-x.y.z-mac.dmg** from the same Releases page, open it
+and drag the app to Applications. Because the app is unsigned, macOS blocks the
+first launch: open Terminal and run `xattr -cr "/Applications/LT Fabrik.app"`
+(or on older macOS: right-click → Open). Auto-update only works on Windows — on
+Mac, grab new versions manually from Releases.
 
-## Installér som Windows-program (anbefalet)
+**Publish a new version** (developer): bump `"version"` in `package.json`, commit,
+and push a tag — GitHub Actions builds both the Windows installer and the Mac DMG
+and attaches them to the release:
 
-Hent **LT-Fabrik-Setup-x.y.z.exe** under
-[Releases](https://github.com/benjahj/Lowerthird-generator/releases/latest) og kør den.
-Programmet installeres med startmenu-genvej og **opdaterer sig selv automatisk**,
-når der udgives en ny version her på GitHub.
+    git tag v1.2.3 && git push origin v1.2.3
 
-- Første gang: tryk "Skift mappe-placering…" og vælg den mappe, hvor dine
-  slide-mapper ligger — valget huskes.
-- Windows SmartScreen kan advare første gang (installeren er usigneret) —
-  vælg "Flere oplysninger" → "Kør alligevel".
+Installed Windows apps will offer the update automatically. (`publish-release.bat`
+still works for a Windows-only release from your own machine.)
 
-**Mac**: hent **LT-Fabrik-x.y.z-mac.dmg** fra samme Releases-side, åbn den og
-træk appen til Programmer. Da appen er usigneret, blokerer macOS første åbning:
-åbn Terminal og kør `xattr -cr "/Applications/LT Fabrik.app"` (eller på ældre
-macOS: højreklik → Åbn). Auto-opdatering virker kun på Windows — på Mac hentes
-nye versioner manuelt fra Releases.
+## How to use it
 
-**Udgiv en ny version** (udvikler): ret `"version"` i `package.json`, commit,
-og push et tag — så bygger GitHub Actions både Windows-installer og Mac-DMG og
-lægger dem på Releases:
+1. Pick your slide folder in the left panel (folders with images are listed
+   automatically), use "Choose files/folder…" or drag images in.
+   Supports jpg, png, webp, gif, bmp and avif.
+2. Set the size of **Format A** (e.g. stream 1920×216) and optionally
+   **Format B** (e.g. LED screen 936×208). Both formats always carry exactly the
+   same text — line breaks and text size adapt to each format.
+3. Review the previews — click one to see it full size, and adjust per slide if
+   needed (wrapping, vertical position, exclude, image on/off).
+4. Press **Save all to folder…** (Chrome/Edge) or **Download as ZIP** — one file
+   per slide per part per format.
 
-    git tag v1.0.2 && git push origin v1.0.2
+## What it does automatically
 
-Windows-apps opdaterer sig selv derefter. (`publish-release.bat` kan stadig
-bruges til en ren Windows-udgivelse fra egen maskine.)
+- **Fixed frame**: all slides are compared pixel by pixel. Edges that are
+  identical across the whole deck (e.g. a logo bar) are recognized as "frame"
+  and recreated on every lower third — so nothing looks like a crop. Can be
+  fine-tuned under Advanced.
+- **Text without AI**: the background color is estimated per slide, and text
+  lines/words are found through image analysis. Text is cut out as bitmaps, so
+  the original typography, colors and underlines are preserved 1:1 — the text
+  itself can never change.
+- **Wrapping**: words are rewrapped into the line count that gives the largest
+  text in the lower-third format, with balanced line lengths.
+- **Background texture**: an empty band from the slide is reused as background,
+  so paper texture etc. carries over (mirror-tiled, never smeared).
+- **Photo slides**: slides that are mostly photo are cropped to the format
+  instead, with automatic focus detection (vertical position adjustable per slide).
+- **Corner furniture**: page numbers etc. can be kept in the same corner or removed.
+- **Verse-aware splitting**: slides with lots of text are split into several
+  lower thirds (limit: "Max characters per part"; wide glyphs count for more).
+  It never splits in the middle of a verse (raised verse numbers are detected in
+  the image), a whole verse is never mixed with a fragment of another, and the
+  scripture chip is repeated on every part. Parts of the same slide are grouped
+  in the preview and named `_part1`, `_part2` …
 
-## Alternativ: enkelt exe uden installation
+## Tech
 
-Kør **build-exe.bat** (kræver Node 22+). Det laver `LT-Fabrik.exe` (Node SEA),
-som kan lægges direkte i en mappe med slide-mapper og dobbeltklikkes — ingen
-installation, men heller ingen auto-opdatering.
+- `server.js` — minimal static server + folder API (no npm packages). Also runs
+  as a Node SEA executable and as a module inside the Electron app.
+- `app.js` — all analysis and rendering in the browser via canvas.
+- `electron-main.js` — installable app: window, internal server on a free port,
+  auto-update via GitHub Releases.
+- Export writes directly to a chosen folder (File System Access API) or builds a ZIP.
+- Everything runs locally; the only network access is the optional update check.
 
-## Teknik
+### Run from source
 
-- `server.js` — minimal statisk server + mappe-API (ingen npm-pakker).
-- `app.js` — al analyse og rendering i browseren via canvas.
-- Eksport skriver direkte til en valgt mappe (File System Access API) eller bygger en ZIP.
+`start.bat` (requires Node.js) starts a local server on `http://localhost:8617`.
+`build-exe.bat` builds a standalone `LT-Fabrik.exe` (Node SEA) — no installation,
+but no auto-update either.

@@ -17,7 +17,7 @@ let root = null;
 
 async function pickRoot() {
   const r = await dialog.showOpenDialog(win, {
-    title: 'Vælg mappen, hvor dine slide-mapper ligger',
+    title: 'Choose the folder that contains your slide folders',
     properties: ['openDirectory'],
     defaultPath: root || app.getPath('documents'),
   });
@@ -31,20 +31,28 @@ async function pickRoot() {
 function setupAutoUpdate() {
   try {
     const { autoUpdater } = require('electron-updater');
-    autoUpdater.autoDownload = true;
-    autoUpdater.on('update-downloaded', (info) => {
-      dialog.showMessageBox(win, {
-        type: 'info',
-        title: 'Opdatering klar',
-        message: `LT Fabrik ${info.version} er hentet.`,
-        detail: 'Genstart programmet for at bruge den nye version.',
-        buttons: ['Genstart nu', 'Senere'],
+    // spørg FØR download — brugeren vælger "Update now" eller "Remind me later"
+    autoUpdater.autoDownload = false;
+    let asking = false;
+    autoUpdater.on('update-available', async (info) => {
+      if (asking) return;
+      asking = true;
+      const r = await dialog.showMessageBox(win, {
+        type: 'question',
+        title: 'Update available',
+        message: `A new version of LT Fabrik is available (${info.version}).`,
+        detail: 'Would you like to update now? The app will restart when the download finishes.',
+        buttons: ['Update now', 'Remind me later'],
+        defaultId: 0,
         cancelId: 1,
-      }).then((r) => { if (r.response === 0) autoUpdater.quitAndInstall(); });
+      });
+      asking = false;
+      if (r.response === 0) autoUpdater.downloadUpdate().catch(() => {});
     });
-    autoUpdater.on('error', () => { /* offline m.m. — stille */ });
+    autoUpdater.on('update-downloaded', () => autoUpdater.quitAndInstall(false, true));
+    autoUpdater.on('error', () => { /* offline etc. — appen virker fint uden net */ });
     autoUpdater.checkForUpdates().catch(() => {});
-    // tjek igen hver 4. time, hvis programmet står åbent længe
+    // mind om det igen senere, hvis programmet står åbent længe
     setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 3600 * 1000);
   } catch { /* updater ikke tilgængelig i dev-kørsel */ }
 }
@@ -85,7 +93,7 @@ app.whenReady().then(async () => {
 }).catch((e) => {
   // fx firewall/antivirus der blokerer serveren — vis fejlen i stedet for at
   // efterlade en usynlig, hængende proces
-  dialog.showErrorBox('LT Fabrik kunne ikke starte', String(e && e.message || e));
+  dialog.showErrorBox('LT Fabrik could not start', String(e && e.message || e));
   app.quit();
 });
 
