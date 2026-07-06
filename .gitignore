@@ -1,0 +1,9 @@
+# Slide-indhold holdes ude af repoet — læg dine egne slide-mapper her lokalt
+Simple but not easy/
+rEFERENCE/
+*.zip
+
+# OS/editor
+Thumbs.db
+.DS_Store
+node_modules/

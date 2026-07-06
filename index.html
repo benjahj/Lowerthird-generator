@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LT Fabrik — lower thirds fra slides</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="tally" id="tally"></div>
+  <div class="brand">LT<em>·</em>FABRIK</div>
+  <div class="brand-sub">slides &rarr; lower thirds</div>
+  <div class="top-status">
+    <span id="statusText">klar</span>
+    <div class="progress" id="progress"><div></div></div>
+  </div>
+</header>
+
+<div class="app">
+  <aside class="panel">
+
+    <section class="sect">
+      <h2>KILDE</h2>
+      <div class="folder-list" id="folderList"></div>
+      <div class="row" style="margin-top:8px">
+        <button class="ghost" id="pickFiles">Vælg filer…</button>
+        <button class="ghost" id="pickDir">Vælg mappe…</button>
+      </div>
+      <div class="drop" id="drop">…eller træk billeder/mappe herind<br>(jpg · png · webp · gif · bmp · avif)</div>
+      <input type="file" id="filePick" multiple accept="image/*" hidden>
+      <input type="file" id="dirPick" webkitdirectory hidden>
+    </section>
+
+    <section class="sect">
+      <h2>FORMAT A · STREAM</h2>
+      <div class="row">
+        <div class="field"><span>Bredde px</span><input type="number" id="outW" value="1920" min="64" step="2"></div>
+        <div class="field"><span>Højde px</span><input type="number" id="outH" value="216" min="32" step="2"></div>
+        <div class="field"><span>Endelse</span><input type="text" id="suffixA" value="_stream"></div>
+      </div>
+      <div class="presets" id="presets">
+        <button class="chip on" data-w="1920" data-h="216">1920×216 · 20%</button>
+        <button class="chip" data-w="1920" data-h="270">1920×270 · 25%</button>
+        <button class="chip" data-w="1920" data-h="324">1920×324 · 30%</button>
+        <button class="chip" data-w="1920" data-h="360">1920×360 · 33%</button>
+      </div>
+    </section>
+
+    <section class="sect">
+      <h2>FORMAT B · LED-SKÆRM</h2>
+      <div class="row">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="fmtBOn" checked> Lav også format B
+        </label>
+      </div>
+      <div class="row" id="fmtBRow">
+        <div class="field"><span>Bredde px</span><input type="number" id="outW2" value="936" min="64" step="2"></div>
+        <div class="field"><span>Højde px</span><input type="number" id="outH2" value="208" min="32" step="2"></div>
+        <div class="field"><span>Endelse</span><input type="text" id="suffixB" value="_led"></div>
+      </div>
+      <div class="hint">Teksten ombrydes ens på A og B — der kommer aldrig mere eller mindre tekst på det ene format end det andet.</div>
+    </section>
+
+    <section class="sect">
+      <h2>FÆLLES</h2>
+      <div class="row">
+        <div class="field"><span>Luft i kanten px</span><input type="number" id="pad" value="28" min="0" step="2"></div>
+        <div class="field"><span>Filtype</span>
+          <select id="format">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPG (kvalitet 92)</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="sect">
+      <h2>LAYOUT</h2>
+      <div class="row">
+        <label for="layoutMode">Tekst-ombrydning</label>
+        <select id="layoutMode" style="width:130px">
+          <option value="auto">Auto (bedst)</option>
+          <option value="wrap">Ombryd ord</option>
+          <option value="stack">Behold linjer</option>
+          <option value="oneline">Én linje</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="alignH">Justering</label>
+        <select id="alignH" style="width:130px">
+          <option value="center" selected>Centreret</option>
+          <option value="left">Venstre</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="charLimit">Max tegn pr. del</label>
+        <input type="number" id="charLimit" value="200" min="40" max="400" step="5" style="width:130px">
+      </div>
+      <div class="row">
+        <label for="maxScale">Max tekst-forstørrelse</label>
+        <select id="maxScale" style="width:130px">
+          <option value="1">1,0×</option>
+          <option value="1.5">1,5×</option>
+          <option value="2" selected>2,0×</option>
+          <option value="3">3,0×</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="bgMode">Baggrund</label>
+        <select id="bgMode" style="width:130px">
+          <option value="auto">Auto (tekstur)</option>
+          <option value="color">Ensfarvet</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="sidebarMode">Fast ramme/logo</label>
+        <select id="sidebarMode" style="width:130px">
+          <option value="keep">Behold (skalér)</option>
+          <option value="hide">Skjul</option>
+        </select>
+      </div>
+      <div class="row">
+        <label for="furnitureMode">Sidetal m.m.</label>
+        <select id="furnitureMode" style="width:130px">
+          <option value="keep">Behold i hjørne</option>
+          <option value="drop" selected>Fjern</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="sect">
+      <h2>RAMME · AUTO-DETEKTERET</h2>
+      <div class="row">
+        <div class="field"><span>Venstre %</span><input type="number" id="mLeft" value="0" min="0" max="25" step="0.1"></div>
+        <div class="field"><span>Højre %</span><input type="number" id="mRight" value="0" min="0" max="25" step="0.1"></div>
+      </div>
+      <div class="row">
+        <div class="field"><span>Top %</span><input type="number" id="mTop" value="0" min="0" max="25" step="0.1"></div>
+        <div class="field"><span>Bund %</span><input type="number" id="mBottom" value="0" min="0" max="25" step="0.1"></div>
+      </div>
+      <div class="hint">Rammen er de kanter, der er ens på alle slides (fx logo-søjlen). Den genskabes på hver lower third. Justér og tryk på knappen, hvis auto-resultatet ikke passer.</div>
+      <div class="row" style="margin-top:10px">
+        <button class="ghost" id="reanalyze">Analysér igen med disse værdier</button>
+      </div>
+    </section>
+
+    <section class="sect">
+      <h2>EKSPORT</h2>
+      <div class="row"><button class="big" id="exportDir" disabled>Gem alle i mappe…</button></div>
+      <div class="row"><button class="ghost" id="exportZip" disabled>Download som ZIP</button></div>
+      <div class="hint" id="exportHint"></div>
+    </section>
+
+  </aside>
+
+  <main class="main" id="main">
+    <div class="empty" id="emptyState">
+      <div class="logo">LT<em>·</em>FABRIK</div>
+      <p>Vælg en slide-mappe i venstre side, eller træk billeder ind.<br>
+      Appen finder selv logoer/faste elementer, klipper teksten ud<br>
+      og bygger den om til lower thirds i den størrelse, du vælger.</p>
+    </div>
+    <div class="deck-head" id="deckHead" style="display:none">
+      <h1 id="deckTitle"></h1>
+      <span class="meta" id="deckMeta"></span>
+    </div>
+    <div class="grid" id="grid"></div>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
