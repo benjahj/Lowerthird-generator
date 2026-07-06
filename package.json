@@ -1,0 +1,52 @@
+{
+  "name": "lt-fabrik",
+  "productName": "LT Fabrik",
+  "version": "1.0.0",
+  "description": "Lower thirds fra 16:9-slides — lokal generator uden AI",
+  "main": "electron-main.js",
+  "author": "benjahj",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/benjahj/Lowerthird-generator.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dk.mait.ltfabrik",
+    "productName": "LT Fabrik",
+    "files": [
+      "electron-main.js",
+      "server.js",
+      "index.html",
+      "app.js",
+      "styles.css"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "LT-Fabrik-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "benjahj",
+        "repo": "Lowerthird-generator",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

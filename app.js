@@ -80,6 +80,14 @@ async function getBitmap(slide) {
 
 async function loadServerFolders() {
   try {
+    // i den installerede app kan rod-mappen vælges frit
+    try {
+      const caps = await (await fetch('/api/caps')).json();
+      if (caps.pickroot) {
+        $('rootRow').style.display = '';
+        $('pickRoot').title = caps.root;
+      }
+    } catch { /* almindelig server uden caps */ }
     const res = await fetch('/api/folders');
     const folders = await res.json();
     const list = $('folderList');
@@ -1350,6 +1358,11 @@ $('reanalyze').addEventListener('click', async () => {
 
 $('exportDir').addEventListener('click', exportToDir);
 $('exportZip').addEventListener('click', exportZip);
+
+$('pickRoot').addEventListener('click', async () => {
+  await fetch('/api/pickroot');
+  loadServerFolders();
+});
 
 const drop = $('drop');
 drop.addEventListener('click', () => $('filePick').click());

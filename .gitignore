@@ -6,6 +6,7 @@ rEFERENCE/
 # byggede filer
 LT-Fabrik.exe
 sea-prep.blob
+dist/
 
 # OS/editor
 Thumbs.db

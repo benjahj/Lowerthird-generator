@@ -1,7 +1,9 @@
 // LT Fabrik — lille lokal server uden dependencies.
-// Serverer app'en + giver adgang til billedmapper i projektmappen via /api.
-// Kan også køre som selvstændig .exe (Node SEA): app-filerne er da indlejret,
-// og billedmapper læses fra mappen ved siden af exe-filen.
+// Serverer app'en + giver adgang til billedmapper via /api.
+// Kan køre på tre måder:
+//  1) node server.js / start.bat  (rod = projektmappen)
+//  2) selvstændig .exe via Node SEA (app-filer indlejret, rod = exe-mappen)
+//  3) som modul i Electron-appen: startServer({ root, port, pickRoot })
 'use strict';
 
 const http = require('http');
@@ -14,8 +16,8 @@ try {
   if (s.isSea()) sea = s;
 } catch { /* almindelig node-kørsel */ }
 
-const ROOT = sea ? path.dirname(process.execPath) : __dirname;
-const PORT = process.env.PORT ? Number(process.env.PORT) : 8617;
+const DEFAULT_ROOT = sea ? path.dirname(process.execPath) : __dirname;
+const DEFAULT_PORT = process.env.PORT ? Number(process.env.PORT) : 8617;
 
 // app-filer indlejret i exe'en
 const SEA_ASSETS = { '/index.html': 'index.html', '/app.js': 'app.js', '/styles.css': 'styles.css' };
@@ -38,13 +40,13 @@ const MIME = {
 
 const IMG_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif', '.svg']);
 
-function safeJoin(rel) {
-  const p = path.normalize(path.join(ROOT, rel));
-  if (!p.startsWith(ROOT)) return null; // ingen sti-traversering
+function safeJoin(root, rel) {
+  const p = path.normalize(path.join(root, rel));
+  if (!p.startsWith(path.normalize(root))) return null; // ingen sti-traversering
   return p;
 }
 
-function listFolders() {
+function listFolders(root) {
   const out = [];
   const walk = (dir, rel, depth) => {
     let entries;
@@ -61,12 +63,12 @@ function listFolders() {
       }
     }
   };
-  walk(ROOT, '', 3);
+  walk(root, '', 3);
   return out;
 }
 
-function listFiles(relDir) {
-  const dir = safeJoin(relDir);
+function listFiles(root, relDir) {
+  const dir = safeJoin(root, relDir);
   if (!dir) return null;
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return null; }
@@ -77,65 +79,95 @@ function listFiles(relDir) {
   return files;
 }
 
-const server = http.createServer((req, res) => {
-  const url = new URL(req.url, 'http://localhost');
-  const pathname = decodeURIComponent(url.pathname);
+function startServer(opts = {}) {
+  const getRoot = typeof opts.root === 'function' ? opts.root : () => opts.root || DEFAULT_ROOT;
+  // app-filer: i Electron ligger de i app-pakken (samme mappe som denne fil)
+  const appDir = opts.appDir || __dirname;
 
-  if (pathname === '/api/folders') {
-    res.writeHead(200, { 'Content-Type': MIME['.json'] });
-    res.end(JSON.stringify(listFolders()));
-    return;
-  }
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, 'http://localhost');
+    const pathname = decodeURIComponent(url.pathname);
 
-  if (pathname === '/api/files') {
-    const files = listFiles(url.searchParams.get('dir') || '');
-    if (!files) { res.writeHead(404); res.end('{}'); return; }
-    res.writeHead(200, { 'Content-Type': MIME['.json'] });
-    res.end(JSON.stringify(files));
-    return;
-  }
+    if (pathname === '/api/caps') {
+      res.writeHead(200, { 'Content-Type': MIME['.json'] });
+      res.end(JSON.stringify({ pickroot: !!opts.pickRoot, root: getRoot() }));
+      return;
+    }
 
-  let rel = pathname === '/' ? '/index.html' : pathname;
+    if (pathname === '/api/pickroot' && opts.pickRoot) {
+      try { await opts.pickRoot(); } catch { /* annulleret */ }
+      res.writeHead(200, { 'Content-Type': MIME['.json'] });
+      res.end(JSON.stringify({ root: getRoot() }));
+      return;
+    }
 
-  if (sea && SEA_ASSETS[rel]) {
-    const buf = Buffer.from(sea.getAsset(SEA_ASSETS[rel]));
+    if (pathname === '/api/folders') {
+      res.writeHead(200, { 'Content-Type': MIME['.json'] });
+      res.end(JSON.stringify(listFolders(getRoot())));
+      return;
+    }
+
+    if (pathname === '/api/files') {
+      const files = listFiles(getRoot(), url.searchParams.get('dir') || '');
+      if (!files) { res.writeHead(404); res.end('{}'); return; }
+      res.writeHead(200, { 'Content-Type': MIME['.json'] });
+      res.end(JSON.stringify(files));
+      return;
+    }
+
+    let rel = pathname === '/' ? '/index.html' : pathname;
+
+    if (sea && SEA_ASSETS[rel]) {
+      const buf = Buffer.from(sea.getAsset(SEA_ASSETS[rel]));
+      res.writeHead(200, {
+        'Content-Type': MIME[path.extname(rel)] || 'application/octet-stream',
+        'Cache-Control': 'no-store',
+      });
+      res.end(buf);
+      return;
+    }
+
+    // app-filer fra app-mappen, billeder fra rod-mappen
+    const isAppFile = !!SEA_ASSETS[rel];
+    const file = isAppFile ? path.join(appDir, rel.slice(1)) : safeJoin(getRoot(), rel);
+    if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('404 — findes ikke');
+      return;
+    }
+    const ext = path.extname(file).toLowerCase();
     res.writeHead(200, {
-      'Content-Type': MIME[path.extname(rel)] || 'application/octet-stream',
+      'Content-Type': MIME[ext] || 'application/octet-stream',
       'Cache-Control': 'no-store',
     });
-    res.end(buf);
-    return;
-  }
-
-  const file = safeJoin(rel);
-  if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
-    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('404 — findes ikke');
-    return;
-  }
-  const ext = path.extname(file).toLowerCase();
-  res.writeHead(200, {
-    'Content-Type': MIME[ext] || 'application/octet-stream',
-    'Cache-Control': 'no-store',
+    fs.createReadStream(file).pipe(res);
   });
-  fs.createReadStream(file).pipe(res);
-});
 
-server.listen(PORT, () => {
-  console.log('LT Fabrik kører på  http://localhost:' + PORT);
-  console.log('Billedmapper læses fra: ' + ROOT);
-  console.log('Luk med Ctrl+C (eller luk dette vindue).');
-  // som .exe: åbn browseren automatisk ved dobbeltklik
-  if (sea && process.platform === 'win32' && process.env.LT_NO_OPEN !== '1') {
-    require('child_process').exec('start "" "http://localhost:' + PORT + '"', { shell: 'cmd.exe' });
-  }
-});
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(opts.port !== undefined ? opts.port : DEFAULT_PORT, '127.0.0.1', () => {
+      resolve({ server, port: server.address().port });
+    });
+  });
+}
 
-server.on('error', (e) => {
-  if (e.code === 'EADDRINUSE') {
-    console.error('Port ' + PORT + ' er optaget — kører LT Fabrik allerede? Luk den anden, eller sæt PORT=xxxx.');
-  } else {
-    console.error(e.message);
-  }
-  setTimeout(() => process.exit(1), 8000);
-});
+module.exports = { startServer };
+
+// direkte kørsel (node server.js eller SEA-exe)
+if (require.main === module || sea) {
+  startServer().then(({ port }) => {
+    console.log('LT Fabrik kører på  http://localhost:' + port);
+    console.log('Billedmapper læses fra: ' + DEFAULT_ROOT);
+    console.log('Luk med Ctrl+C (eller luk dette vindue).');
+    if (sea && process.platform === 'win32' && process.env.LT_NO_OPEN !== '1') {
+      require('child_process').exec('start "" "http://localhost:' + port + '"', { shell: 'cmd.exe' });
+    }
+  }).catch((e) => {
+    if (e.code === 'EADDRINUSE') {
+      console.error('Porten er optaget — kører LT Fabrik allerede? Luk den anden, eller sæt PORT=xxxx.');
+    } else {
+      console.error(e.message);
+    }
+    setTimeout(() => process.exit(1), 8000);
+  });
+}

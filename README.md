@@ -38,16 +38,27 @@ Ingen AI, ingen API-nøgler, ingen dependencies — kun Node.js og en browser.
 - **Pr. slide**: ombrydning, lodret placering, udelad — og indlejrede billeder
   kan slås fra ("billede: til/fra"), hvis beskæringen bliver skæv.
 
-## Som selvstændigt program (.exe)
+## Installér som Windows-program (anbefalet)
 
-Kør **build-exe.bat** (kræver Node 22+ på byggemaskinen). Det laver `LT-Fabrik.exe`
-med app-filerne indlejret via Nodes Single Executable Application.
+Hent **LT-Fabrik-Setup-x.y.z.exe** under
+[Releases](https://github.com/benjahj/Lowerthird-generator/releases/latest) og kør den.
+Programmet installeres med startmenu-genvej og **opdaterer sig selv automatisk**,
+når der udgives en ny version her på GitHub.
 
-- Læg `LT-Fabrik.exe` i en mappe sammen med dine slide-mapper og dobbeltklik —
-  serveren starter, og browseren åbner automatisk.
-- Exe-filen kræver ikke Node installeret og kan kopieres til andre Windows-maskiner.
-- Windows SmartScreen kan advare første gang (exe'en er usigneret) — vælg
-  "Kør alligevel".
+- Første gang: tryk "Skift mappe-placering…" og vælg den mappe, hvor dine
+  slide-mapper ligger — valget huskes.
+- Windows SmartScreen kan advare første gang (installeren er usigneret) —
+  vælg "Flere oplysninger" → "Kør alligevel".
+
+**Udgiv en ny version** (udvikler): ret `"version"` i `package.json`, og kør
+`publish-release.bat`. Den bygger installeren og lægger den på GitHub Releases —
+alle installerede apps opdaterer sig selv derefter.
+
+## Alternativ: enkelt exe uden installation
+
+Kør **build-exe.bat** (kræver Node 22+). Det laver `LT-Fabrik.exe` (Node SEA),
+som kan lægges direkte i en mappe med slide-mapper og dobbeltklikkes — ingen
+installation, men heller ingen auto-opdatering.
 
 ## Teknik
 
