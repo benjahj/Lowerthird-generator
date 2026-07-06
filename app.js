@@ -601,8 +601,35 @@ async function refineSlide(sl) {
         }
       }
       if (fx0 >= 0) w.f = { x0: sx0 + fx0, y0: sy0 + fy0, x1: sx0 + fx1, y1: sy0 + fy1 };
+
+      // ægte baseline pr. ord: bunden af det tætteste sammenhængende række-bånd.
+      // Underlængder (g/y/p), kommaer og understregninger er tynde spor/bånd
+      // under båndet og forvrider derfor ikke målingen.
+      if (w.f) {
+        const h = w.f.y1 - w.f.y0;
+        const counts = new Int32Array(h);
+        let rowMax = 0;
+        for (let yy = 0; yy < h; yy++) {
+          let c = 0;
+          for (let x = w.f.x0; x < w.f.x1; x++) {
+            const p = ((w.f.y0 - sy0 + yy) * iw + (x - sx0)) * 4;
+            if (Math.abs(d[p] - bg[0]) + Math.abs(d[p + 1] - bg[1]) + Math.abs(d[p + 2] - bg[2]) > 110) c++;
+          }
+          counts[yy] = c;
+          if (c > rowMax) rowMax = c;
+        }
+        const thr = Math.max(1, 0.32 * rowMax);
+        let bestLen = 0, bestEnd = -1, runLen = 0;
+        for (let i = 0; i < h; i++) {
+          if (counts[i] >= thr) { runLen++; if (runLen > bestLen) { bestLen = runLen; bestEnd = i; } }
+          else runLen = 0;
+        }
+        w.base = bestEnd >= 0 ? w.f.y0 + bestEnd + 1 : w.f.y1;
+      }
     }
-    const ys = ln.words.filter((w) => w.f).map((w) => w.f.y1).sort((p, q) => p - q);
+    // linjens baseline = median af ordenes egne baselines (robust mod
+    // underlængder og understregninger, som før forvred medianen af bokse-bunde)
+    const ys = ln.words.filter((w) => w.f).map((w) => w.base || w.f.y1).sort((p, q) => p - q);
     if (ys.length) ln.fbase = ys[ys.length >> 1];
 
     // hævede versnumre (superscript) markerer, hvor et nyt vers begynder.
