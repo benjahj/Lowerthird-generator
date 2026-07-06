@@ -108,7 +108,15 @@ async function loadServerFolders() {
         b.classList.add('on');
         loadServerFolder(f.dir);
       });
+      b.dataset.dir = f.dir;
       list.appendChild(b);
+    }
+    // genoptag sidste session: åbn automatisk den senest brugte mappe
+    if (!S.slides.length) {
+      let last = null;
+      try { last = localStorage.getItem('ltfabrik.lastFolder'); } catch { /* ignorér */ }
+      const btn = last && list.querySelector(`.folder-item[data-dir="${CSS.escape(last)}"]`);
+      if (btn) btn.click();
     }
   } catch {
     $('folderList').innerHTML = '<div class="hint">Could not load the folder list. Drag images in below instead.</div>';
@@ -128,8 +136,30 @@ async function loadServerFolder(dir) {
     ov: { mode: 'auto', off: 0, on: true, img: true },
   }));
   S.deckName = dir.split('/').pop();
-  await ingest(slides);
+  S.deckKey = dir;
+  try { localStorage.setItem('ltfabrik.lastFolder', dir); } catch { /* privat browsing */ }
+  // genopret per-slide justeringer og evt. manuel ramme fra sidste session
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('ltfabrik.deck.' + dir)); } catch { /* ignorér */ }
+  if (saved && saved.ov) {
+    for (const sl of slides) {
+      const o = saved.ov[sl.name];
+      if (o) sl.ov = { ...sl.ov, ...o };
+    }
+  }
+  await ingest(slides, saved && saved.frame ? saved.frame : null);
 }
+
+// gemmer per-slide justeringer + manuel ramme pr. mappe (til næste session)
+const saveDeckState = debounce(() => {
+  if (!S.deckKey) return; // trukket-ind filer har ingen stabil nøgle
+  const ov = {};
+  for (const sl of S.slides) ov[sl.name] = sl.ov;
+  try {
+    localStorage.setItem('ltfabrik.deck.' + S.deckKey,
+      JSON.stringify({ ov, frame: S.manualFrame ? S.frame : null }));
+  } catch { /* fuld/privat storage */ }
+}, 400);
 
 async function loadFiles(fileList) {
   const files = [...fileList]
@@ -138,16 +168,26 @@ async function loadFiles(fileList) {
   if (!files.length) { toast('No image files found in what you dropped.', true); return; }
   const slides = files.map((f) => ({ name: f.name, src: { file: f }, ov: { mode: 'auto', off: 0, on: true, img: true } }));
   S.deckName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : 'My images';
+  S.deckKey = null;
   await ingest(slides);
 }
 
-async function ingest(slides) {
+async function ingest(slides, savedFrame) {
   for (const b of bmpCache.values()) { try { b.bmp.close(); } catch { /* i brug */ } }
   bmpCache.clear();
   S.slides = slides;
   S.analyzed = false;
   S.manualFrame = false;
   S.cardSig = null;
+  if (savedFrame) {
+    // manuel ramme fra sidste session — auto-detektionen springes over
+    S.frame = savedFrame;
+    S.manualFrame = true;
+    $('mLeft').value = (savedFrame.l * 100).toFixed(1);
+    $('mRight').value = (savedFrame.r * 100).toFixed(1);
+    $('mTop').value = (savedFrame.t * 100).toFixed(1);
+    $('mBottom').value = (savedFrame.b * 100).toFixed(1);
+  }
   $('exportDir').disabled = true;
   $('exportZip').disabled = true;
   buildCards(null);
@@ -1213,8 +1253,9 @@ function buildCards(counts) {
           <canvas class="out fmt-a"></canvas>
           <canvas class="out fmt-b"></canvas>
         </div>
-        <div class="umd"><span class="id">PGM ${String(i + 1).padStart(3, '0')}${partLbl}</span><span class="fn"></span><span class="dims"></span></div>`;
+        <div class="umd"><span class="id">PGM ${String(i + 1).padStart(3, '0')}${partLbl}</span><span class="fn"></span><span class="dims"></span><button class="fsbtn" title="View fullscreen">⛶</button></div>`;
       card.querySelector('.fn').textContent = sl.name;
+      card.querySelector('.fsbtn').addEventListener('click', () => openViewer(sl, pi));
       card.classList.toggle('off', !sl.ov.on);
       sl._cards.push(card);
       group.appendChild(card);
@@ -1235,24 +1276,26 @@ function buildCards(counts) {
       <button class="skip">exclude</button>`;
     const sel = ctrls.querySelector('select');
     sel.value = sl.ov.mode;
-    sel.addEventListener('change', () => { sl.ov.mode = sel.value; renderAllSoon(); });
+    sel.addEventListener('change', () => { sl.ov.mode = sel.value; saveDeckState(); renderAllSoon(); });
     const rng = ctrls.querySelector('input[type=range]');
     rng.value = sl.ov.off;
     rng.title = 'Vertical position — double-click resets';
-    rng.addEventListener('input', debounce(() => { sl.ov.off = +rng.value; renderOne(sl); }, 80));
-    rng.addEventListener('dblclick', () => { rng.value = 0; sl.ov.off = 0; renderOne(sl); });
+    rng.addEventListener('input', debounce(() => { sl.ov.off = +rng.value; saveDeckState(); renderOne(sl); }, 80));
+    rng.addEventListener('dblclick', () => { rng.value = 0; sl.ov.off = 0; saveDeckState(); renderOne(sl); });
     // til/fra for indlejrede billeder — vises kun når sliden har nogen
     const imgBtn = ctrls.querySelector('.imgbtn');
     imgBtn.textContent = sl.ov.img === false ? 'image: off' : 'image: on';
     imgBtn.addEventListener('click', () => {
       sl.ov.img = sl.ov.img === false;
       imgBtn.textContent = sl.ov.img ? 'image: on' : 'image: off';
+      saveDeckState();
       renderOne(sl);
     });
     ctrls.querySelector('.skip:not(.imgbtn)').addEventListener('click', () => {
       sl.ov.on = !sl.ov.on;
       sl._cards.forEach((c) => c.classList.toggle('off', !sl.ov.on));
       ctrls.querySelector('.skip:not(.imgbtn)').textContent = sl.ov.on ? 'exclude' : 'include';
+      saveDeckState();
     });
     sl._ctrls = ctrls;
     group.appendChild(ctrls);
@@ -1511,22 +1554,81 @@ document.querySelectorAll('#presets .chip').forEach((c) => {
   });
 });
 
-// lightbox: klik på et preview for at se det i fuld størrelse
-$('grid').addEventListener('click', async (e) => {
-  const cnv = e.target.closest('canvas.out');
-  if (!cnv || !cnv._ref || !S.analyzed) return;
-  const { sl, pi, fi } = cnv._ref;
+/* ------------------- fullscreen-viewer med navigation ---------------------- */
+// Åbnes med ⛶ på et kort eller ved klik på et preview. Viser enheden (slide-del)
+// i fuld opløsning med begge formater, og der bladres med pile/piletaster.
+
+let viewUnits = [];
+let viewIdx = -1;
+
+function buildViewUnits(s) {
+  const u = [];
+  for (const sl of S.slides) {
+    if (!sl.ov.on || !sl.ana) continue;
+    const L = layoutFor(sl, s);
+    for (let pi = 0; pi < L.parts.length; pi++) u.push({ sl, pi });
+  }
+  return u;
+}
+
+async function showUnit(idx) {
+  if (!viewUnits.length) return;
+  viewIdx = (idx + viewUnits.length) % viewUnits.length;
+  const { sl, pi } = viewUnits[viewIdx];
   const s = getSettings();
   const L = layoutFor(sl, s);
-  const fmt = s.formats[fi];
-  if (!fmt) return;
-  await drawSlide(sl, s, fmt, $('lightCanvas'), (L.rows[pi] || [])[fi] || null, L.mode, 1);
+  const rows = L.rows[pi] || [null, null];
+  await drawSlide(sl, s, s.formats[0], $('lightCanvas'), rows[0], L.mode, 1);
+  const cB = $('lightCanvasB');
+  if (s.formats[1]) {
+    cB.style.display = '';
+    cB.style.width = Math.min(100, (s.formats[1].W / s.formats[0].W) * 100) + '%';
+    await drawSlide(sl, s, s.formats[1], cB, rows[1], L.mode, 1);
+  } else {
+    cB.style.display = 'none';
+  }
+  const partLbl = L.parts.length > 1 ? ` · part ${pi + 1}/${L.parts.length}` : '';
   $('lightMeta').textContent =
-    `${sl.name}${L.parts.length > 1 ? ` · part ${pi + 1}/${L.parts.length}` : ''} · ${fmt.W}×${fmt.H} px · click or Esc to close`;
+    `${viewIdx + 1}/${viewUnits.length} · ${sl.name}${partLbl} · ` +
+    s.formats.map((f) => `${f.W}×${f.H}`).join(' + ') +
+    ' · ← → navigate · Esc close';
+}
+
+async function openViewer(sl, pi) {
+  if (!S.analyzed) return;
+  viewUnits = buildViewUnits(getSettings());
+  const idx = viewUnits.findIndex((u) => u.sl === sl && u.pi === pi);
   $('lightbox').classList.add('on');
+  const lb = $('lightbox');
+  if (lb.requestFullscreen) lb.requestFullscreen().catch(() => { /* fallback: overlay */ });
+  await showUnit(idx < 0 ? 0 : idx);
+}
+
+function closeViewer() {
+  $('lightbox').classList.remove('on');
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* allerede ude */ });
+}
+
+const viewerOpen = () => $('lightbox').classList.contains('on');
+
+$('grid').addEventListener('click', (e) => {
+  const cnv = e.target.closest('canvas.out');
+  if (cnv && cnv._ref) openViewer(cnv._ref.sl, cnv._ref.pi);
 });
-$('lightbox').addEventListener('click', () => $('lightbox').classList.remove('on'));
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('lightbox').classList.remove('on'); });
+$('lightPrev').addEventListener('click', (e) => { e.stopPropagation(); showUnit(viewIdx - 1); });
+$('lightNext').addEventListener('click', (e) => { e.stopPropagation(); showUnit(viewIdx + 1); });
+$('lightClose').addEventListener('click', (e) => { e.stopPropagation(); closeViewer(); });
+$('lightbox').addEventListener('click', (e) => { if (!e.target.closest('.light-btn')) closeViewer(); });
+document.addEventListener('keydown', (e) => {
+  if (!viewerOpen()) return;
+  if (e.key === 'Escape') closeViewer();
+  else if (e.key === 'ArrowLeft') showUnit(viewIdx - 1);
+  else if (e.key === 'ArrowRight') showUnit(viewIdx + 1);
+});
+// native fullscreen-Esc lukker fullscreen uden keydown — luk overlayet med
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && viewerOpen()) $('lightbox').classList.remove('on');
+});
 
 $('reanalyze').addEventListener('click', async () => {
   const pct = (id) => Math.min(0.25, Math.max(0, (+$(id).value || 0) / 100));
@@ -1536,6 +1638,7 @@ $('reanalyze').addEventListener('click', async () => {
   $('mTop').value = (S.frame.t * 100).toFixed(1);
   $('mBottom').value = (S.frame.b * 100).toFixed(1);
   S.manualFrame = true;
+  saveDeckState();
   if (!S.slides.length) return;
   setStatus('re-analyzing…', true, 0);
   for (const sl of S.slides) if (sl.small) { analyzeSlide(sl); await refineSlide(sl); }

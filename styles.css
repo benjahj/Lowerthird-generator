@@ -335,12 +335,49 @@ details.adv summary:hover { color: var(--dim); }
   padding: 30px;
 }
 .lightbox.on { display: flex; }
-.lightbox canvas {
-  max-width: 96vw;
-  max-height: 80vh;
+.light-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  width: min(92vw, 1800px);
+  pointer-events: none; /* klik på baggrunden lukker — også mellem strips */
+}
+.light-stack canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 38vh;
+  object-fit: contain;
   box-shadow: 0 12px 60px rgba(0, 0, 0, 0.7);
 }
 .light-meta { font-family: var(--mono); font-size: 12px; color: var(--dim); }
+
+.light-btn {
+  position: absolute;
+  background: rgba(23, 27, 33, 0.75);
+  border: 1px solid var(--line2);
+  color: var(--dim);
+  border-radius: 8px;
+  cursor: pointer;
+  z-index: 2;
+  font-family: var(--mono);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.light-btn:hover { color: var(--amber-hi); border-color: var(--amber); }
+.light-prev, .light-next {
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 36px;
+  width: 54px;
+  height: 84px;
+  padding-bottom: 6px;
+}
+.light-prev { left: 20px; }
+.light-next { right: 20px; }
+.light-close { top: 18px; right: 20px; font-size: 15px; width: 40px; height: 40px; }
 
 .grid {
   display: grid;
@@ -415,6 +452,12 @@ details.adv summary:hover { color: var(--dim); }
 .card .umd .id { color: var(--green); letter-spacing: 0.08em; flex: none; }
 .card .umd .fn { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .umd .dims { margin-left: auto; color: var(--faint); flex: none; }
+.card .umd .fsbtn {
+  background: none; border: 0; color: var(--faint);
+  font-size: 14px; line-height: 1; cursor: pointer;
+  padding: 0 0 0 8px; flex: none;
+}
+.card .umd .fsbtn:hover { color: var(--amber-hi); }
 
 .ctrls {
   display: flex;

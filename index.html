@@ -178,7 +178,13 @@
 <div class="toast" id="toast"></div>
 
 <div class="lightbox" id="lightbox">
-  <canvas id="lightCanvas"></canvas>
+  <button class="light-btn light-close" id="lightClose" title="Close (Esc)">✕</button>
+  <button class="light-btn light-prev" id="lightPrev" title="Previous (←)">‹</button>
+  <button class="light-btn light-next" id="lightNext" title="Next (→)">›</button>
+  <div class="light-stack" id="lightStack">
+    <canvas id="lightCanvas"></canvas>
+    <canvas id="lightCanvasB"></canvas>
+  </div>
   <div class="light-meta" id="lightMeta"></div>
 </div>
 
