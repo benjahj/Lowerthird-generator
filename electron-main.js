@@ -82,6 +82,11 @@ app.whenReady().then(async () => {
 
   // auto-opdatering kun på Windows — på macOS kræver det Apple-signering
   if (app.isPackaged && process.platform === 'win32') setupAutoUpdate();
+}).catch((e) => {
+  // fx firewall/antivirus der blokerer serveren — vis fejlen i stedet for at
+  // efterlade en usynlig, hængende proces
+  dialog.showErrorBox('LT Fabrik kunne ikke starte', String(e && e.message || e));
+  app.quit();
 });
 
 app.on('window-all-closed', () => app.quit());

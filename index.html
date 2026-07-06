@@ -67,23 +67,10 @@
     </section>
 
     <section class="sect">
-      <h2>FÆLLES</h2>
+      <h2>TEKST &amp; LAYOUT</h2>
       <div class="row">
-        <div class="field"><span>Luft i kanten px</span><input type="number" id="pad" value="28" min="0" step="2"></div>
-        <div class="field"><span>Filtype</span>
-          <select id="format">
-            <option value="png">PNG</option>
-            <option value="jpeg">JPG (kvalitet 92)</option>
-          </select>
-        </div>
-      </div>
-    </section>
-
-    <section class="sect">
-      <h2>LAYOUT</h2>
-      <div class="row">
-        <label for="layoutMode">Tekst-ombrydning</label>
-        <select id="layoutMode" style="width:130px">
+        <label for="layoutMode">Ombrydning</label>
+        <select id="layoutMode" style="width:130px" title="Auto vælger den ombrydning, der giver størst tekst">
           <option value="auto">Auto (bedst)</option>
           <option value="wrap">Ombryd ord</option>
           <option value="stack">Behold linjer</option>
@@ -99,11 +86,16 @@
       </div>
       <div class="row">
         <label for="charLimit">Max tegn pr. del</label>
-        <input type="number" id="charLimit" value="200" min="40" max="400" step="5" style="width:130px">
+        <input type="number" id="charLimit" value="200" min="40" max="400" step="5" style="width:130px"
+          title="Slides med mere tekst deles i flere lower thirds — aldrig midt i et vers">
       </div>
-      <div class="row">
+    </section>
+
+    <details class="sect adv">
+      <summary>AVANCERET</summary>
+      <div class="row" style="margin-top:10px">
         <label for="maxScale">Max tekst-forstørrelse</label>
-        <select id="maxScale" style="width:130px">
+        <select id="maxScale" style="width:130px" title="Hvor meget teksten højst må forstørres i forhold til originalen">
           <option value="1">1,0×</option>
           <option value="1.5">1,5×</option>
           <option value="2" selected>2,0×</option>
@@ -112,14 +104,14 @@
       </div>
       <div class="row">
         <label for="bgMode">Baggrund</label>
-        <select id="bgMode" style="width:130px">
+        <select id="bgMode" style="width:130px" title="Auto genbruger slidens egen tekstur som baggrund">
           <option value="auto">Auto (tekstur)</option>
           <option value="color">Ensfarvet</option>
         </select>
       </div>
       <div class="row">
         <label for="sidebarMode">Fast ramme/logo</label>
-        <select id="sidebarMode" style="width:130px">
+        <select id="sidebarMode" style="width:130px" title="Logo-søjler m.m. der er ens på alle slides">
           <option value="keep">Behold (skalér)</option>
           <option value="hide">Skjul</option>
         </select>
@@ -131,10 +123,17 @@
           <option value="drop" selected>Fjern</option>
         </select>
       </div>
-    </section>
+      <div class="row">
+        <div class="field"><span>Luft i kanten px</span><input type="number" id="pad" value="28" min="0" step="2"></div>
+        <div class="field"><span>Filtype</span>
+          <select id="format">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPG (kvalitet 92)</option>
+          </select>
+        </div>
+      </div>
 
-    <section class="sect">
-      <h2>RAMME · AUTO-DETEKTERET</h2>
+      <div class="adv-sub">RAMME · AUTO-DETEKTERET</div>
       <div class="row">
         <div class="field"><span>Venstre %</span><input type="number" id="mLeft" value="0" min="0" max="25" step="0.1"></div>
         <div class="field"><span>Højre %</span><input type="number" id="mRight" value="0" min="0" max="25" step="0.1"></div>
@@ -147,7 +146,7 @@
       <div class="row" style="margin-top:10px">
         <button class="ghost" id="reanalyze">Analysér igen med disse værdier</button>
       </div>
-    </section>
+    </details>
 
     <section class="sect">
       <h2>EKSPORT</h2>
@@ -161,9 +160,12 @@
   <main class="main" id="main">
     <div class="empty" id="emptyState">
       <div class="logo">LT<em>·</em>FABRIK</div>
-      <p>Vælg en slide-mappe i venstre side, eller træk billeder ind.<br>
-      Appen finder selv logoer/faste elementer, klipper teksten ud<br>
-      og bygger den om til lower thirds i den størrelse, du vælger.</p>
+      <p class="empty-lead">Slides ind — lower thirds ud. Uden at teksten nogensinde ændres.</p>
+      <ol class="steps">
+        <li><b>Vælg dine slides</b><span>Klik på en mappe i venstre side, eller træk billeder herind.</span></li>
+        <li><b>Tjek preview</b><span>Alt analyseres automatisk — logoer, tekst og opdeling i dele. Klik på et preview for at se det stort.</span></li>
+        <li><b>Gem</b><span>Én knap eksporterer alle lower thirds i begge formater.</span></li>
+      </ol>
     </div>
     <div class="deck-head" id="deckHead" style="display:none">
       <h1 id="deckTitle"></h1>
@@ -174,6 +176,11 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="lightbox" id="lightbox">
+  <canvas id="lightCanvas"></canvas>
+  <div class="light-meta" id="lightMeta"></div>
+</div>
 
 <script src="app.js"></script>
 </body>

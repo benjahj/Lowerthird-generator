@@ -38,11 +38,14 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
-const IMG_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif', '.svg']);
+// .svg er bevidst udeladt: createImageBitmap kan ikke dekode SVG-blobs
+const IMG_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif']);
 
 function safeJoin(root, rel) {
   const p = path.normalize(path.join(root, rel));
-  if (!p.startsWith(path.normalize(root))) return null; // ingen sti-traversering
+  // path.relative afviser både ..-udbrud og søskendemapper med samme præfiks
+  const r = path.relative(path.normalize(root), p);
+  if (r.startsWith('..') || path.isAbsolute(r)) return null;
   return p;
 }
 
@@ -85,6 +88,18 @@ function startServer(opts = {}) {
   const appDir = opts.appDir || __dirname;
 
   const server = http.createServer(async (req, res) => {
+    try {
+      await handle(req, res);
+    } catch (e) {
+      // decodeURIComponent/statSync m.fl. kan kaste — svar pænt i stedet for at crashe
+      try {
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Ugyldig forespørgsel');
+      } catch { /* svar allerede påbegyndt */ }
+    }
+  });
+
+  async function handle(req, res) {
     const url = new URL(req.url, 'http://localhost');
     const pathname = decodeURIComponent(url.pathname);
 
@@ -141,7 +156,7 @@ function startServer(opts = {}) {
       'Cache-Control': 'no-store',
     });
     fs.createReadStream(file).pipe(res);
-  });
+  }
 
   return new Promise((resolve, reject) => {
     server.once('error', reject);

@@ -56,17 +56,19 @@ const debounce = (fn, ms) => {
 // Fuldopløsnings-bitmaps dekodes on demand og genbruges via en lille LRU-cache,
 // så store decks ikke æder al hukommelse.
 
+// nøglen er selve slide-objektet (identitet) — et nyt deck med samme filnavne
+// kan derfor aldrig få et gammelt decks bitmap serveret
 const bmpCache = new Map();
 let bmpTick = 0;
 
 async function getBitmap(slide) {
-  const hit = bmpCache.get(slide.name);
+  const hit = bmpCache.get(slide);
   if (hit) { hit.t = ++bmpTick; return hit.bmp; }
   let blob;
   if (slide.src.file) blob = slide.src.file;
   else blob = await (await fetch(slide.src.url)).blob();
   const bmp = await createImageBitmap(blob);
-  bmpCache.set(slide.name, { bmp, t: ++bmpTick });
+  bmpCache.set(slide, { bmp, t: ++bmpTick });
   if (bmpCache.size > 12) {
     let oldest = null;
     for (const [k, v] of bmpCache) if (!oldest || v.t < bmpCache.get(oldest).t) oldest = k;
@@ -114,7 +116,12 @@ async function loadServerFolders() {
 }
 
 async function loadServerFolder(dir) {
-  const files = await (await fetch('/api/files?dir=' + encodeURIComponent(dir))).json();
+  const res = await fetch('/api/files?dir=' + encodeURIComponent(dir));
+  const files = res.ok ? await res.json() : null;
+  if (!Array.isArray(files) || !files.length) {
+    toast('Mappen kunne ikke læses — er den flyttet eller slettet?', true);
+    return;
+  }
   const slides = files.map((name) => ({
     name,
     src: { url: dir.split('/').map(encodeURIComponent).join('/') + '/' + encodeURIComponent(name) },
@@ -126,7 +133,7 @@ async function loadServerFolder(dir) {
 
 async function loadFiles(fileList) {
   const files = [...fileList]
-    .filter((f) => /image\/(jpeg|png|webp|gif|bmp|avif|svg)/.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(f.name))
+    .filter((f) => /image\/(jpeg|png|webp|gif|bmp|avif)/.test(f.type) || /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(f.name))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
   if (!files.length) { toast('Ingen billedfiler fundet i det, du trak ind.', true); return; }
   const slides = files.map((f) => ({ name: f.name, src: { file: f }, ov: { mode: 'auto', off: 0, on: true, img: true } }));
@@ -135,12 +142,14 @@ async function loadFiles(fileList) {
 }
 
 async function ingest(slides) {
-  for (const b of bmpCache.values()) b.bmp.close();
+  for (const b of bmpCache.values()) { try { b.bmp.close(); } catch { /* i brug */ } }
   bmpCache.clear();
   S.slides = slides;
   S.analyzed = false;
   S.manualFrame = false;
   S.cardSig = null;
+  $('exportDir').disabled = true;
+  $('exportZip').disabled = true;
   buildCards(null);
   await analyzeDeck();
 }
@@ -161,38 +170,64 @@ async function analyzeDeck() {
   const cv = new OffscreenCanvas(AW, AH);
   const cx = cv.getContext('2d', { willReadFrequently: true });
   const colEdge = [], rowEdge = []; // pr. slide: andel af rækker/kolonner med kant
+  // genbrugte buffere — allokeres én gang, ikke pr. slide
+  const lum = new Float32Array(AW * AH);
+  const colCnt = new Int32Array(AW);
+  const rowCnt = new Int32Array(AH);
 
+  let decoded = 0;
   for (let i = 0; i < n; i++) {
     if (token !== S.renderToken) return;
     const sl = S.slides[i];
-    const bmp = await getBitmap(sl);
+    let bmp;
+    try {
+      bmp = await getBitmap(sl);
+    } catch {
+      sl._bad = true; // korrupt/udekodbar fil — springes over, resten fortsætter
+      continue;
+    }
+    decoded++;
     sl.w = bmp.width;
     sl.h = bmp.height;
     cx.drawImage(bmp, 0, 0, AW, AH);
     sl.small = cx.getImageData(0, 0, AW, AH);
     const d = sl.small.data;
 
-    const lum = new Float32Array(AW * AH);
-    for (let p = 0; p < AW * AH; p++) lum[p] = 0.299 * d[p * 4] + 0.587 * d[p * 4 + 1] + 0.114 * d[p * 4 + 2];
+    for (let p = 0; p < AW * AH; p++) lum[p] = (77 * d[p * 4] + 150 * d[p * 4 + 1] + 29 * d[p * 4 + 2]) >> 8;
+    colCnt.fill(0); rowCnt.fill(0);
+    // ét række-ordnet gennemløb (cache-venligt) tæller både lodrette og
+    // vandrette kanter
+    for (let r = 0; r < AH; r++) {
+      const o = r * AW;
+      let cnt = 0;
+      for (let c = 1; c < AW; c++) {
+        if (Math.abs(lum[o + c] - lum[o + c - 1]) > 22) colCnt[c]++;
+        if (r > 0 && Math.abs(lum[o + c] - lum[o - AW + c]) > 22) cnt++;
+      }
+      if (r > 0 && Math.abs(lum[o] - lum[o - AW]) > 22) cnt++;
+      rowCnt[r] = cnt;
+    }
     const ce = new Float32Array(AW);
-    for (let c = 1; c < AW; c++) {
-      let cnt = 0;
-      for (let r = 0; r < AH; r++) if (Math.abs(lum[r * AW + c] - lum[r * AW + c - 1]) > 22) cnt++;
-      ce[c] = cnt / AH;
-    }
+    for (let c = 1; c < AW; c++) ce[c] = colCnt[c] / AH;
     const re = new Float32Array(AH);
-    for (let r = 1; r < AH; r++) {
-      let cnt = 0;
-      for (let c = 0; c < AW; c++) if (Math.abs(lum[r * AW + c] - lum[(r - 1) * AW + c]) > 22) cnt++;
-      re[r] = cnt / AW;
-    }
+    for (let r = 1; r < AH; r++) re[r] = rowCnt[r] / AW;
     colEdge.push(ce); rowEdge.push(re);
     setStatus(`analyserer ${i + 1}/${n}`, true, (i + 1) / (n * 2));
     if (i % 4 === 3) await new Promise((r) => setTimeout(r));
   }
 
+  // filtrér filer der ikke kunne dekodes fra
+  if (decoded < n) {
+    const bad = S.slides.filter((sl) => sl._bad).map((sl) => sl.name);
+    S.slides = S.slides.filter((sl) => !sl._bad);
+    S.cardSig = null;
+    buildCards(null);
+    toast(`${bad.length} fil(er) kunne ikke læses og blev sprunget over: ${bad.slice(0, 3).join(', ')}${bad.length > 3 ? ' …' : ''}`, true);
+    if (!S.slides.length) { setStatus('ingen brugbare billeder', false, null); return; }
+  }
+
   if (!S.manualFrame) {
-    if (n >= 4) {
+    if (colEdge.length >= 4) {
       // 10. percentil på tværs af slides: kanten skal findes på (næsten) alle
       const pct10 = (arrs, idx) => {
         const v = arrs.map((a) => a[idx]).sort((a, b) => a - b);
@@ -221,13 +256,22 @@ async function analyzeDeck() {
   }
 
   // pas 2: indholdsanalyse pr. slide + finjustering i fuld opløsning
-  for (let i = 0; i < n; i++) {
+  const n2 = S.slides.length;
+  for (let i = 0; i < n2; i++) {
     if (token !== S.renderToken) return;
-    analyzeSlide(S.slides[i]);
-    await refineSlide(S.slides[i]);
-    setStatus(`læser indhold ${i + 1}/${n}`, true, 0.5 + (i + 1) / (n * 2));
+    const sl = S.slides[i];
+    try {
+      analyzeSlide(sl);
+      await refineSlide(sl);
+    } catch (e) {
+      console.error('analyse fejlede for', sl.name, e);
+      sl.ana = sl.ana || { photo: true, bg: [0, 0, 0], lines: [], decos: [], furniture: [], images: [], band: null, cx0: 0, cy0: 0, cw: AW, ch: AH, kx: (sl.w || 1920) / AW, ky: (sl.h || 1080) / AH };
+    }
+    sl._layout = null;
+    setStatus(`læser indhold ${i + 1}/${n2}`, true, 0.5 + (i + 1) / (n2 * 2));
     if (i % 8 === 7) await new Promise((r) => setTimeout(r));
   }
+  if (token !== S.renderToken) return; // nyt deck kan være indlæst under sidste await
 
   S.analyzed = true;
   $('exportDir').disabled = !window.showDirectoryPicker;
@@ -246,6 +290,12 @@ function analyzeSlide(sl) {
   const T = Math.round(S.frame.t * AH), B = Math.round(S.frame.b * AH);
   let cx0 = L, cx1 = AW - R, cy0 = T, cy1 = AH - B;
   const cw = cx1 - cx0, ch = cy1 - cy0;
+
+  if (cw < 20 || ch < 20) {
+    // rammen æder næsten hele billedet (ekstreme manuelle værdier)
+    sl.ana = { photo: true, bg: [0, 0, 0], lines: [], decos: [], furniture: [], images: [], band: null, cx0: 0, cy0: 0, cw: AW, ch: AH, kx: sl.w / AW, ky: sl.h / AH };
+    return;
+  }
 
   // --- dominerende baggrundsfarve via grov histogram ---
   const bins = new Map();
@@ -577,30 +627,51 @@ function geomFor(sl, s, fmt) {
 // ords boks og linjens baseline op mod originalbilledet, så tekst på samme
 // række flugter pixelperfekt.
 
+// genbrugt analyse-canvas — undgår ~8 MB allokering pr. slide gennem GC'en
+let refCvs = null, refCtx = null;
+
 async function refineSlide(sl) {
   const a = sl.ana;
   if (!a || a.photo || !a.lines.length) return;
   const { kx, ky, bg } = a;
   const bmp = await getBitmap(sl);
-  const cvs = new OffscreenCanvas(sl.w, sl.h);
-  const c2 = cvs.getContext('2d', { willReadFrequently: true });
-  c2.drawImage(bmp, 0, 0);
+  if (!refCvs || refCvs.width !== sl.w || refCvs.height !== sl.h) {
+    refCvs = new OffscreenCanvas(sl.w, sl.h);
+    refCtx = refCvs.getContext('2d', { willReadFrequently: true });
+  }
+  refCtx.drawImage(bmp, 0, 0);
+
+  // ét samlet readback for alle linjer (getImageData pr. linje var dyrt)
+  let uy0 = sl.h, uy1 = 0, ux0 = sl.w, ux1 = 0;
   for (const ln of a.lines) {
-    const sy0 = Math.max(0, Math.floor((ln.y0 - 2) * ky));
-    const sy1 = Math.min(sl.h, Math.ceil((ln.y1 + 2) * ky));
-    const sx0 = Math.max(0, Math.floor((ln.x0 - 2) * kx));
-    const sx1 = Math.min(sl.w, Math.ceil((ln.x1 + 2) * kx));
-    if (sy1 <= sy0 || sx1 <= sx0) continue;
-    const im = c2.getImageData(sx0, sy0, sx1 - sx0, sy1 - sy0);
-    const d = im.data, iw = sx1 - sx0, ih = sy1 - sy0;
+    uy0 = Math.min(uy0, Math.max(0, Math.floor((ln.y0 - 2) * ky)));
+    uy1 = Math.max(uy1, Math.min(sl.h, Math.ceil((ln.y1 + 2) * ky)));
+    ux0 = Math.min(ux0, Math.max(0, Math.floor((ln.x0 - 2) * kx)));
+    ux1 = Math.max(ux1, Math.min(sl.w, Math.ceil((ln.x1 + 2) * kx)));
+  }
+  if (uy1 <= uy0 || ux1 <= ux0) return;
+  const im = refCtx.getImageData(ux0, uy0, ux1 - ux0, uy1 - uy0);
+  const d = im.data, uw = ux1 - ux0;
+  // absolutte koordinater — scanninger holdes inden for egen linjes bånd,
+  // så overlappende x-områder fra andre linjer aldrig blandes ind
+  const on = (x, y) => {
+    const p = ((y - uy0) * uw + (x - ux0)) * 4;
+    return Math.abs(d[p] - bg[0]) + Math.abs(d[p + 1] - bg[1]) + Math.abs(d[p + 2] - bg[2]) > 110;
+  };
+
+  for (const ln of a.lines) {
+    const ly0 = Math.max(uy0, Math.floor((ln.y0 - 2) * ky));
+    const ly1 = Math.min(uy1, Math.ceil((ln.y1 + 2) * ky));
+    const lx0 = Math.max(ux0, Math.floor((ln.x0 - 2) * kx));
+    const lx1 = Math.min(ux1, Math.ceil((ln.x1 + 2) * kx));
+    if (ly1 <= ly0 || lx1 <= lx0) continue;
     for (const w of ln.words) {
-      const wx0 = Math.max(0, Math.floor((w.x0 - 1) * kx) - sx0);
-      const wx1 = Math.min(iw, Math.ceil((w.x1 + 1) * kx) - sx0);
+      const wx0 = Math.max(lx0, Math.floor((w.x0 - 1) * kx));
+      const wx1 = Math.min(lx1, Math.ceil((w.x1 + 1) * kx));
       let fx0 = -1, fx1 = -1, fy0 = -1, fy1 = -1;
-      for (let y = 0; y < ih; y++) {
+      for (let y = ly0; y < ly1; y++) {
         for (let x = wx0; x < wx1; x++) {
-          const p = (y * iw + x) * 4;
-          if (Math.abs(d[p] - bg[0]) + Math.abs(d[p + 1] - bg[1]) + Math.abs(d[p + 2] - bg[2]) > 110) {
+          if (on(x, y)) {
             if (fx0 < 0 || x < fx0) fx0 = x;
             if (x + 1 > fx1) fx1 = x + 1;
             if (fy0 < 0) fy0 = y;
@@ -608,7 +679,7 @@ async function refineSlide(sl) {
           }
         }
       }
-      if (fx0 >= 0) w.f = { x0: sx0 + fx0, y0: sy0 + fy0, x1: sx0 + fx1, y1: sy0 + fy1 };
+      if (fx0 >= 0) w.f = { x0: fx0, y0: fy0, x1: fx1, y1: fy1 };
 
       // ægte baseline pr. ord: bunden af det tætteste sammenhængende række-bånd.
       // Underlængder (g/y/p), kommaer og understregninger er tynde spor/bånd
@@ -619,10 +690,7 @@ async function refineSlide(sl) {
         let rowMax = 0;
         for (let yy = 0; yy < h; yy++) {
           let c = 0;
-          for (let x = w.f.x0; x < w.f.x1; x++) {
-            const p = ((w.f.y0 - sy0 + yy) * iw + (x - sx0)) * 4;
-            if (Math.abs(d[p] - bg[0]) + Math.abs(d[p + 1] - bg[1]) + Math.abs(d[p + 2] - bg[2]) > 110) c++;
-          }
+          for (let x = w.f.x0; x < w.f.x1; x++) if (on(x, w.f.y0 + yy)) c++;
           counts[yy] = c;
           if (c > rowMax) rowMax = c;
         }
@@ -656,9 +724,8 @@ async function refineSlide(sl) {
         let deepest = -1;
         for (let ci = 0; ci < nCols; ci++) {
           const x = w.f.x0 + ci;
-          for (let yy = Math.min(sy1 - 1, w.f.y1 + 2); yy >= sy0; yy--) {
-            const p = ((yy - sy0) * iw + (x - sx0)) * 4;
-            if (Math.abs(d[p] - bg[0]) + Math.abs(d[p + 1] - bg[1]) + Math.abs(d[p + 2] - bg[2]) > 110) { colLow[ci] = yy; break; }
+          for (let yy = Math.min(ly1 - 1, w.f.y1 + 2); yy >= ly0; yy--) {
+            if (on(x, yy)) { colLow[ci] = yy; break; }
           }
           if (colLow[ci] > deepest) deepest = colLow[ci];
         }
@@ -680,12 +747,8 @@ async function refineSlide(sl) {
           if (lw > prefDeep) prefDeep = lw;
           if (lw < prefShallow) prefShallow = lw;
           const x = w.f.x0 + ci;
-          for (let yy = Math.max(sy0, w.f.y0 - 2); yy <= lw; yy++) {
-            const p = ((yy - sy0) * iw + (x - sx0)) * 4;
-            if (Math.abs(d[p] - bg[0]) + Math.abs(d[p + 1] - bg[1]) + Math.abs(d[p + 2] - bg[2]) > 110) {
-              if (yy < prefTop) prefTop = yy;
-              break;
-            }
+          for (let yy = Math.max(ly0, w.f.y0 - 2); yy <= lw; yy++) {
+            if (on(x, yy)) { if (yy < prefTop) prefTop = yy; break; }
           }
         }
         // mål mod linjens top (revner kan puste ord-boksen op) + kræv flad
@@ -942,14 +1005,17 @@ function chooseRows(sl, s, mode, geoms, subset) {
 
 /* --------------------------------- rendering -------------------------------- */
 
-async function drawSlide(sl, s, fmt, canvas, rows, mode) {
+async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
   const bmp = await getBitmap(sl);
   const a = sl.ana;
   const { W, H } = fmt;
   const g = geomFor(sl, s, fmt);
 
-  canvas.width = W; canvas.height = H;
+  // pixScale < 1: preview tegnes i visningsopløsning; al geometri er i W×H
+  canvas.width = Math.max(2, Math.round(W * pixScale));
+  canvas.height = Math.max(2, Math.round(H * pixScale));
   const ctx = canvas.getContext('2d');
+  if (pixScale !== 1) ctx.scale(pixScale, pixScale);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
@@ -1056,9 +1122,70 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode) {
   }
 }
 
+/* --------------------------- layout-cache pr. slide ------------------------- */
+// Geometri, opdeling og ombrydning afhænger kun af indstillingerne og analysen
+// — ikke af fx lodret-skyderen. Caches pr. slide med en indstillings-signatur,
+// så en skyder-bevægelse kun koster selve tegningen.
+
+function layoutSig(sl, s) {
+  return JSON.stringify([s.formats.map((f) => [f.W, f.H]), s.pad, s.layout, s.align,
+    s.maxScale, s.charLimit, s.sidebar, s.furniture, sl.ov.mode, sl.ov.img !== false]);
+}
+
+function layoutFor(sl, s) {
+  const sig = layoutSig(sl, s);
+  if (sl._layout && sl._layout.sig === sig) return sl._layout;
+  const mode = resolveMode(sl, s);
+  const geoms = s.formats.map((f) => geomFor(sl, s, f));
+  const parts = mode !== 'crop' ? partsOf(sl, s) : [null];
+  const rows = parts.map((part) => s.formats.map((_, fi) =>
+    mode !== 'crop' && part ? chooseRows(sl, s, mode, [geoms[fi]], part) : null));
+  sl._layout = { sig, mode, geoms, parts, rows };
+  return sl._layout;
+}
+
+/* ------------------------- doven rendering af kort -------------------------- */
+// Kun synlige kort renderes; resten markeres "dirty" og renderes først, når de
+// scrolles ind. Gør indstillings-ændringer øjeblikkelige selv ved 200+ slides.
+
+// preview tegnes i visningsopløsning (ikke fuld eksportstørrelse) — sparer
+// ~4× tegnetid og op mod 1 GB canvas-hukommelse ved store decks
+const previewScale = (fmt) => Math.min(1, (560 * (window.devicePixelRatio || 1)) / fmt.W);
+
+const renderQueue = [];
+let queuePumping = false;
+
+function queueRender(sl) {
+  if (!renderQueue.includes(sl)) renderQueue.push(sl);
+  if (queuePumping) return;
+  queuePumping = true;
+  (async () => {
+    let done = 0;
+    while (renderQueue.length) {
+      const x = renderQueue.shift();
+      try { await renderOne(x); } catch (e) { console.error(x.name, e); }
+      done++;
+      if (renderQueue.length) setStatus(`renderer ${done}/${done + renderQueue.length}`, true, done / (done + renderQueue.length));
+      await new Promise((r) => setTimeout(r));
+    }
+    queuePumping = false;
+    setStatus(`klar · ${S.totalParts || S.slides.length} lower thirds`, false, null);
+  })();
+}
+
+const cardObserver = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    const sl = e.target._slide;
+    if (!sl) continue;
+    sl._visible = e.isIntersecting;
+    if (e.isIntersecting && sl._dirty) { sl._dirty = false; queueRender(sl); }
+  }
+}, { rootMargin: '600px' });
+
 /* ------------------------------ preview-kort ------------------------------- */
 
 function buildCards(counts) {
+  cardObserver.disconnect();
   const grid = $('grid');
   grid.innerHTML = '';
   $('emptyState').style.display = S.slides.length ? 'none' : '';
@@ -1111,7 +1238,9 @@ function buildCards(counts) {
     sel.addEventListener('change', () => { sl.ov.mode = sel.value; renderAllSoon(); });
     const rng = ctrls.querySelector('input[type=range]');
     rng.value = sl.ov.off;
+    rng.title = 'Lodret placering — dobbeltklik nulstiller';
     rng.addEventListener('input', debounce(() => { sl.ov.off = +rng.value; renderOne(sl); }, 80));
+    rng.addEventListener('dblclick', () => { rng.value = 0; sl.ov.off = 0; renderOne(sl); });
     // til/fra for indlejrede billeder — vises kun når sliden har nogen
     const imgBtn = ctrls.querySelector('.imgbtn');
     imgBtn.textContent = sl.ov.img === false ? 'billede: fra' : 'billede: til';
@@ -1127,6 +1256,8 @@ function buildCards(counts) {
     });
     sl._ctrls = ctrls;
     group.appendChild(ctrls);
+    group._slide = sl;
+    cardObserver.observe(group);
     grid.appendChild(group);
   });
 }
@@ -1134,28 +1265,26 @@ function buildCards(counts) {
 async function renderOne(sl) {
   if (!S.analyzed || !sl.ana || !sl._cards) return;
   const s = getSettings();
-  const mode = resolveMode(sl, s);
+  const L = layoutFor(sl, s);
   if (sl._ctrls) {
     const b = sl._ctrls.querySelector('.imgbtn');
-    if (b) b.style.display = sl.ana.images && sl.ana.images.length && mode !== 'crop' ? '' : 'none';
+    if (b) b.style.display = sl.ana.images && sl.ana.images.length && L.mode !== 'crop' ? '' : 'none';
   }
-  const geoms = s.formats.map((f) => geomFor(sl, s, f));
-  const parts = mode !== 'crop' ? partsOf(sl, s) : [null];
 
   for (let pi = 0; pi < sl._cards.length; pi++) {
     const card = sl._cards[pi];
-    const part = parts[pi] || null;
     const cA = card.querySelector('canvas.fmt-a');
     const cB = card.querySelector('canvas.fmt-b');
+    const rows = L.rows[pi] || [null, null];
     try {
-      // ombrydning vælges PR. FORMAT — stream må have færre linjer end LED
-      const rowsA = mode !== 'crop' && part ? chooseRows(sl, s, mode, [geoms[0]], part) : null;
-      await drawSlide(sl, s, s.formats[0], cA, rowsA, mode);
+      // ombrydning er PR. FORMAT — stream må have færre linjer end LED
+      await drawSlide(sl, s, s.formats[0], cA, rows[0], L.mode, previewScale(s.formats[0]));
+      cA._ref = { sl, pi, fi: 0 };
       if (s.formats[1]) {
         cB.style.display = '';
         cB.style.width = Math.min(100, (s.formats[1].W / s.formats[0].W) * 100) + '%';
-        const rowsB = mode !== 'crop' && part ? chooseRows(sl, s, mode, [geoms[1]], part) : null;
-        await drawSlide(sl, s, s.formats[1], cB, rowsB, mode);
+        await drawSlide(sl, s, s.formats[1], cB, rows[1], L.mode, previewScale(s.formats[1]));
+        cB._ref = { sl, pi, fi: 1 };
       } else {
         cB.style.display = 'none';
       }
@@ -1168,25 +1297,24 @@ async function renderOne(sl) {
 
 async function renderAll() {
   if (!S.analyzed) return;
-  const token = ++S.renderToken;
+  S.renderToken++;
   const s = getSettings();
   // gen-byg kort-gitteret hvis antallet af dele har ændret sig
-  const counts = S.slides.map((sl) => (resolveMode(sl, s) !== 'crop' ? partsOf(sl, s).length : 1));
+  const counts = S.slides.map((sl) => layoutFor(sl, s).parts.length);
   const sig = counts.join(',');
   if (sig !== S.cardSig) { S.cardSig = sig; buildCards(counts); }
-  const totalParts = counts.reduce((a, b) => a + b, 0);
-  $('deckMeta').textContent = `${S.slides.length} slides → ${totalParts} lower thirds · ` + s.formats.map((f) => `${f.W}×${f.H}`).join(' + ');
-  setStatus('renderer…', true, 0);
-  for (let i = 0; i < S.slides.length; i++) {
-    if (token !== S.renderToken) return;
-    await renderOne(S.slides[i]);
-    setStatus(`renderer ${i + 1}/${S.slides.length}`, true, (i + 1) / S.slides.length);
-    await new Promise((r) => setTimeout(r));
+  S.totalParts = counts.reduce((a, b) => a + b, 0);
+  $('deckMeta').textContent = `${S.slides.length} slides → ${S.totalParts} lower thirds · ` + s.formats.map((f) => `${f.W}×${f.H}`).join(' + ');
+  // markér alle som ændrede; kun de synlige renderes nu, resten ved scroll
+  renderQueue.length = 0;
+  for (const sl of S.slides) {
+    sl._dirty = true;
+    if (sl._visible) { sl._dirty = false; queueRender(sl); }
   }
-  setStatus(`klar · ${totalParts} lower thirds`, false, null);
+  if (!renderQueue.length && !queuePumping) setStatus(`klar · ${S.totalParts} lower thirds`, false, null);
 }
 
-const renderAllSoon = debounce(renderAll, 220);
+const renderAllSoon = debounce(renderAll, 200);
 
 /* --------------------------------- eksport --------------------------------- */
 
@@ -1202,25 +1330,28 @@ async function slideBlob(sl, s, fmt, rows, mode) {
 }
 
 function exportCount(s, list) {
-  return list.reduce((t, sl) => t + (resolveMode(sl, s) !== 'crop' ? partsOf(sl, s).length : 1), 0) * s.formats.length;
+  return list.reduce((t, sl) => t + layoutFor(sl, s).parts.length, 0) * s.formats.length;
 }
 
 async function* exportBlobs(s, list) {
+  const seen = new Map(); // "slide.jpg"+"slide.png" må ikke overskrive hinanden
   for (const sl of list) {
-    const mode = resolveMode(sl, s);
-    const geoms = s.formats.map((f) => geomFor(sl, s, f));
-    const parts = mode !== 'crop' ? partsOf(sl, s) : [null];
+    const { mode, parts, rows } = layoutFor(sl, s);
     for (let pi = 0; pi < parts.length; pi++) {
       for (let fi = 0; fi < s.formats.length; fi++) {
         const fmt = s.formats[fi];
-        const rows = mode !== 'crop' && parts[pi] ? chooseRows(sl, s, mode, [geoms[fi]], parts[pi]) : null;
-        yield { name: outName(sl, s, fmt, pi, parts.length), blob: await slideBlob(sl, s, fmt, rows, mode) };
+        let name = outName(sl, s, fmt, pi, parts.length);
+        const nSeen = seen.get(name) || 0;
+        seen.set(name, nSeen + 1);
+        if (nSeen) name = name.replace(/(\.[^.]+)$/, `_${nSeen + 1}$1`);
+        yield { name, blob: await slideBlob(sl, s, fmt, rows[pi][fi], mode) };
       }
     }
   }
 }
 
 async function exportToDir() {
+  if (!S.analyzed) { toast('Vent til analysen er færdig, før du eksporterer.', true); return; }
   const s = getSettings();
   let dir;
   try { dir = await window.showDirectoryPicker({ mode: 'readwrite' }); } catch { return; }
@@ -1263,73 +1394,110 @@ function crc32(u8) {
   return (c ^ 0xffffffff) >>> 0;
 }
 
-function buildZip(entries) { // entries: [{name, data:Uint8Array}]
+// inkrementel writer: filer tilføjes én ad gangen, så eksporten aldrig holder
+// hele sættet dobbelt i hukommelsen
+function zipWriter() {
   const enc = new TextEncoder();
   const parts = [], central = [];
-  let offset = 0;
-  for (const e of entries) {
-    const nm = enc.encode(e.name);
-    const crc = crc32(e.data);
-    const head = new DataView(new ArrayBuffer(30));
-    head.setUint32(0, 0x04034b50, true);
-    head.setUint16(4, 20, true);
-    head.setUint32(14, crc, true);
-    head.setUint32(18, e.data.length, true);
-    head.setUint32(22, e.data.length, true);
-    head.setUint16(26, nm.length, true);
-    parts.push(head.buffer, nm, e.data);
-    const c = new DataView(new ArrayBuffer(46));
-    c.setUint32(0, 0x02014b50, true);
-    c.setUint16(4, 20, true); c.setUint16(6, 20, true);
-    c.setUint32(16, crc, true);
-    c.setUint32(20, e.data.length, true);
-    c.setUint32(24, e.data.length, true);
-    c.setUint16(28, nm.length, true);
-    c.setUint32(42, offset, true);
-    central.push(c.buffer, nm);
-    offset += 30 + nm.length + e.data.length;
-  }
-  const cdSize = central.reduce((s, b) => s + (b.byteLength || b.length), 0);
-  const end = new DataView(new ArrayBuffer(22));
-  end.setUint32(0, 0x06054b50, true);
-  end.setUint16(8, entries.length, true);
-  end.setUint16(10, entries.length, true);
-  end.setUint32(12, cdSize, true);
-  end.setUint32(16, offset, true);
-  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+  let offset = 0, count = 0;
+  return {
+    add(name, data) {
+      const nm = enc.encode(name);
+      const crc = crc32(data);
+      const head = new DataView(new ArrayBuffer(30));
+      head.setUint32(0, 0x04034b50, true);
+      head.setUint16(4, 20, true);
+      head.setUint16(6, 0x0800, true); // UTF-8-flag: danske filnavne (æøå) pakkes rigtigt ud
+      head.setUint32(14, crc, true);
+      head.setUint32(18, data.length, true);
+      head.setUint32(22, data.length, true);
+      head.setUint16(26, nm.length, true);
+      parts.push(head.buffer, nm, data);
+      const c = new DataView(new ArrayBuffer(46));
+      c.setUint32(0, 0x02014b50, true);
+      c.setUint16(4, 20, true); c.setUint16(6, 20, true);
+      c.setUint16(8, 0x0800, true); // UTF-8-flag
+      c.setUint32(16, crc, true);
+      c.setUint32(20, data.length, true);
+      c.setUint32(24, data.length, true);
+      c.setUint16(28, nm.length, true);
+      c.setUint32(42, offset, true);
+      central.push(c.buffer, nm);
+      offset += 30 + nm.length + data.length;
+      count++;
+    },
+    finish() {
+      const cdSize = central.reduce((t, b) => t + (b.byteLength || b.length), 0);
+      const end = new DataView(new ArrayBuffer(22));
+      end.setUint32(0, 0x06054b50, true);
+      end.setUint16(8, count, true);
+      end.setUint16(10, count, true);
+      end.setUint32(12, cdSize, true);
+      end.setUint32(16, offset, true);
+      return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+    },
+  };
 }
 
 async function exportZip() {
+  if (!S.analyzed) { toast('Vent til analysen er færdig, før du eksporterer.', true); return; }
   const s = getSettings();
   const list = S.slides.filter((x) => x.ov.on);
   const totalFiles = exportCount(s, list);
   setStatus('pakker zip…', true, 0);
-  const entries = [];
+  const zw = zipWriter();
+  let packed = 0;
   for await (const { name, blob } of exportBlobs(s, list)) {
-    entries.push({ name, data: new Uint8Array(await blob.arrayBuffer()) });
-    setStatus(`pakker ${entries.length}/${totalFiles}`, true, entries.length / totalFiles);
+    zw.add(name, new Uint8Array(await blob.arrayBuffer()));
+    packed++;
+    setStatus(`pakker ${packed}/${totalFiles}`, true, packed / totalFiles);
   }
-  const zip = buildZip(entries);
+  const zip = zw.finish();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(zip);
   a.download = (S.deckName || 'lower-thirds').replace(/[^\w æøåÆØÅ-]+/g, ' ').trim() + '_lower-thirds.zip';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   setStatus('klar', false, null);
-  toast(`ZIP med ${entries.length} filer downloadet.`);
+  toast(`ZIP med ${packed} filer downloadet.`);
 }
 
 /* ---------------------------------- events --------------------------------- */
 
-for (const id of ['outW', 'outH', 'outW2', 'outH2', 'suffixA', 'suffixB', 'fmtBOn', 'pad', 'format',
-  'layoutMode', 'alignH', 'maxScale', 'charLimit', 'bgMode', 'sidebarMode', 'furnitureMode']) {
-  $(id).addEventListener('input', () => {
-    if (id === 'outW' || id === 'outH') {
-      document.querySelectorAll('#presets .chip').forEach((c) =>
-        c.classList.toggle('on', +c.dataset.w === +$('outW').value && +c.dataset.h === +$('outH').value));
-    }
+const SETTING_IDS = ['outW', 'outH', 'outW2', 'outH2', 'suffixA', 'suffixB', 'fmtBOn', 'pad', 'format',
+  'layoutMode', 'alignH', 'maxScale', 'charLimit', 'bgMode', 'sidebarMode', 'furnitureMode'];
+const NO_RENDER = new Set(['suffixA', 'suffixB', 'format']); // bruges først ved eksport
+const ON_COMMIT = new Set(['outW', 'outH', 'outW2', 'outH2', 'pad', 'charLimit']); // tal: render ved Enter/blur
+
+function syncChips() {
+  document.querySelectorAll('#presets .chip').forEach((c) =>
+    c.classList.toggle('on', +c.dataset.w === +$('outW').value && +c.dataset.h === +$('outH').value));
+}
+
+// indstillinger huskes mellem sessioner
+function saveSettings() {
+  const o = {};
+  for (const id of SETTING_IDS) o[id] = id === 'fmtBOn' ? $(id).checked : $(id).value;
+  try { localStorage.setItem('ltfabrik.settings.v1', JSON.stringify(o)); } catch { /* privat browsing */ }
+}
+function restoreSettings() {
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem('ltfabrik.settings.v1')); } catch { /* ignorér */ }
+  if (!o) return;
+  for (const id of SETTING_IDS) {
+    if (!(id in o)) continue;
+    if (id === 'fmtBOn') $(id).checked = !!o[id]; else $(id).value = o[id];
+  }
+  syncChips();
+  $('fmtBRow').style.opacity = $('fmtBOn').checked ? '1' : '0.4';
+}
+
+for (const id of SETTING_IDS) {
+  $(id).addEventListener(ON_COMMIT.has(id) ? 'change' : 'input', () => {
+    if (id === 'outW' || id === 'outH') syncChips();
     if (id === 'fmtBOn') $('fmtBRow').style.opacity = $('fmtBOn').checked ? '1' : '0.4';
-    renderAllSoon();
+    saveSettings();
+    if (!NO_RENDER.has(id)) renderAllSoon();
   });
 }
 
@@ -1337,18 +1505,36 @@ document.querySelectorAll('#presets .chip').forEach((c) => {
   c.addEventListener('click', () => {
     $('outW').value = c.dataset.w;
     $('outH').value = c.dataset.h;
-    document.querySelectorAll('#presets .chip').forEach((x) => x.classList.toggle('on', x === c));
+    syncChips();
+    saveSettings();
     renderAllSoon();
   });
 });
 
+// lightbox: klik på et preview for at se det i fuld størrelse
+$('grid').addEventListener('click', async (e) => {
+  const cnv = e.target.closest('canvas.out');
+  if (!cnv || !cnv._ref || !S.analyzed) return;
+  const { sl, pi, fi } = cnv._ref;
+  const s = getSettings();
+  const L = layoutFor(sl, s);
+  const fmt = s.formats[fi];
+  if (!fmt) return;
+  await drawSlide(sl, s, fmt, $('lightCanvas'), (L.rows[pi] || [])[fi] || null, L.mode, 1);
+  $('lightMeta').textContent =
+    `${sl.name}${L.parts.length > 1 ? ` · del ${pi + 1}/${L.parts.length}` : ''} · ${fmt.W}×${fmt.H} px · klik eller Esc for at lukke`;
+  $('lightbox').classList.add('on');
+});
+$('lightbox').addEventListener('click', () => $('lightbox').classList.remove('on'));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('lightbox').classList.remove('on'); });
+
 $('reanalyze').addEventListener('click', async () => {
-  S.frame = {
-    l: (+$('mLeft').value || 0) / 100,
-    r: (+$('mRight').value || 0) / 100,
-    t: (+$('mTop').value || 0) / 100,
-    b: (+$('mBottom').value || 0) / 100,
-  };
+  const pct = (id) => Math.min(0.25, Math.max(0, (+$(id).value || 0) / 100));
+  S.frame = { l: pct('mLeft'), r: pct('mRight'), t: pct('mTop'), b: pct('mBottom') };
+  $('mLeft').value = (S.frame.l * 100).toFixed(1);
+  $('mRight').value = (S.frame.r * 100).toFixed(1);
+  $('mTop').value = (S.frame.t * 100).toFixed(1);
+  $('mBottom').value = (S.frame.b * 100).toFixed(1);
   S.manualFrame = true;
   if (!S.slides.length) return;
   setStatus('analyserer igen…', true, 0);
@@ -1401,7 +1587,8 @@ drop.addEventListener('drop', async (e) => {
 });
 
 // debug-hook til automatiseret test
-window.__lt = { S, loadServerFolder, renderAll, getSettings, resolveMode, geomFor, chooseRows, partsOf, slideBlob, drawSlide, buildZip };
+window.__lt = { S, loadServerFolder, renderAll, getSettings, resolveMode, geomFor, chooseRows, partsOf, layoutFor, slideBlob, drawSlide, zipWriter };
 
+restoreSettings();
 loadServerFolders();
 setStatus('klar — vælg en mappe', false, null);
