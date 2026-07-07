@@ -40,7 +40,7 @@ function setupAutoUpdate() {
       const r = await dialog.showMessageBox(win, {
         type: 'question',
         title: 'Update available',
-        message: `A new version of LT Fabrik is available (${info.version}).`,
+        message: `A new version of LT Factory is available (${info.version}).`,
         detail: 'Would you like to update now? The app will restart when the download finishes.',
         buttons: ['Update now', 'Remind me later'],
         defaultId: 0,
@@ -66,6 +66,7 @@ app.whenReady().then(async () => {
     appDir: __dirname,
     port: 0, // ledig port — kolliderer aldrig med andre programmer
     pickRoot,
+    version: app.getVersion(),
   });
 
   win = new BrowserWindow({
@@ -73,7 +74,7 @@ app.whenReady().then(async () => {
     height: 950,
     backgroundColor: '#0f1216',
     autoHideMenuBar: true,
-    title: 'LT Fabrik',
+    title: 'LT Factory',
   });
   win.loadURL('http://127.0.0.1:' + port + '/');
 
@@ -118,7 +119,7 @@ app.whenReady().then(async () => {
 }).catch((e) => {
   // fx firewall/antivirus der blokerer serveren — vis fejlen i stedet for at
   // efterlade en usynlig, hængende proces
-  dialog.showErrorBox('LT Fabrik could not start', String(e && e.message || e));
+  dialog.showErrorBox('LT Factory could not start', String(e && e.message || e));
   app.quit();
 });
 

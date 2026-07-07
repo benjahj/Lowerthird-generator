@@ -1,23 +1,23 @@
-# LT Fabrik
+# LT Factory
 
 **Turn your 16:9 slides into broadcast-ready lower thirds — automatically.**
 
-Drop in a folder of sermon or presentation slides, and LT Fabrik rebuilds each
+Drop in a folder of sermon or presentation slides, and LT Factory rebuilds each
 one as a lower third: logos and frames are kept, the text is re-laid out to fill
 the format beautifully, and long slides are split into several parts — without
 ever changing a single word. Works fully offline. Free.
 
 ## Download & install
 
-**Windows**: download **LT-Fabrik-Setup-x.y.z.exe** from
+**Windows**: download **LT-Factory-Setup-x.y.z.exe** from
 [Releases](https://github.com/benjahj/Lowerthird-generator/releases/latest) and run it.
 The app keeps itself up to date — when a new version is out, it simply asks
 *"Would you like to update now?"*
 *(Windows SmartScreen may warn the first time: choose "More info" → "Run anyway".)*
 
-**Mac**: download **LT-Fabrik-x.y.z-mac.dmg** from the same page, open it and drag
+**Mac**: download **LT-Factory-x.y.z-mac.dmg** from the same page, open it and drag
 the app to Applications. On first launch, open Terminal and run
-`xattr -cr "/Applications/LT Fabrik.app"` (or right-click → Open on older macOS).
+`xattr -cr "/Applications/LT Factory.app"` (or right-click → Open on older macOS).
 
 ## Getting started
 
@@ -33,9 +33,13 @@ the app to Applications. On first launch, open Terminal and run
 The app remembers everything between sessions: your settings, your last folder,
 and every per-slide adjustment.
 
-**Projects**: save your work under a name (Save / Save as… in the left panel)
-and reopen it later from the recent-projects list. If you close the app with
-unsaved changes, it asks whether to save first.
+**Projects**: use the **File** menu in the top bar to Save / Save as…, reopen a
+recent project, import, or clear. If you close the app with unsaved changes, it
+asks whether to save first.
+
+**Preferences** (File → Preferences, or Ctrl+,): choose a theme (Dark, Midnight,
+Light), an accent color, toggle reduced motion, decide whether to reopen your
+last project on launch, and set the default export file type.
 
 ## What it does for you
 

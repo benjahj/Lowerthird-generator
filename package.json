@@ -1,8 +1,8 @@
 {
   "name": "lt-fabrik",
-  "productName": "LT Fabrik",
-  "version": "1.2.0",
-  "description": "Lower thirds fra 16:9-slides — lokal generator uden AI",
+  "productName": "LT Factory",
+  "version": "1.2.1",
+  "description": "Lower thirds from 16:9 slides — local generator, no AI",
   "main": "electron-main.js",
   "author": "benjahj",
   "license": "MIT",
@@ -23,7 +23,7 @@
   },
   "build": {
     "appId": "dk.mait.ltfabrik",
-    "productName": "LT Fabrik",
+    "productName": "LT Factory",
     "files": [
       "electron-main.js",
       "server.js",
@@ -38,12 +38,12 @@
     "mac": {
       "target": ["dmg"],
       "category": "public.app-category.video",
-      "artifactName": "LT-Fabrik-${version}-mac.${ext}"
+      "artifactName": "LT-Factory-${version}-mac.${ext}"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "artifactName": "LT-Fabrik-Setup-${version}.${ext}"
+      "artifactName": "LT-Factory-Setup-${version}.${ext}"
     },
     "publish": [
       {

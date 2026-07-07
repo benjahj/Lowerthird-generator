@@ -111,8 +111,8 @@ async function loadServerFolders() {
       b.dataset.dir = f.dir;
       list.appendChild(b);
     }
-    // genoptag sidste session: senest åbne projekt, ellers senest brugte mappe
-    if (!S.slides.length) {
+    // genoptag sidste session (kan slås fra i Preferences)
+    if (!S.slides.length && loadPrefs().reopen) {
       let lastProj = null, last = null;
       try {
         lastProj = localStorage.getItem('ltfabrik.lastProject');
@@ -180,24 +180,33 @@ function markDirty() {
 
 function updateProjectUI() {
   const el = $('projName');
-  el.textContent = (S.dirty && S.slides.length ? '● ' : '') + (S.projectName || 'No project');
+  const dirty = S.dirty && S.slides.length;
+  el.textContent = S.projectName ? (dirty ? '● ' : '') + S.projectName : (dirty ? '● unsaved' : '');
   el.classList.toggle('none', !S.projectName);
-  const list = $('projList');
+  // Recent projects i File-menuen
+  const list = $('miRecent');
   list.innerHTML = '';
-  for (const p of listProjects().slice(0, 8)) {
+  const projects = listProjects().slice(0, 8);
+  if (!projects.length) {
+    list.innerHTML = '<div class="mi-empty">No saved projects yet</div>';
+    return;
+  }
+  for (const p of projects) {
     const b = document.createElement('button');
-    b.className = 'folder-item' + (p.name === S.projectName ? ' on' : '');
-    b.innerHTML = '<span class="nm"></span><span class="cnt"></span><button class="del" title="Delete project">✕</button>';
+    b.className = 'mi mi-recent' + (p.name === S.projectName ? ' on' : '');
+    b.innerHTML = '<span class="nm"></span><span class="dt"></span><span class="del" title="Delete project">✕</span>';
     b.querySelector('.nm').textContent = p.name;
-    b.querySelector('.cnt').textContent = new Date(p.savedAt).toLocaleDateString();
+    b.querySelector('.dt').textContent = new Date(p.savedAt).toLocaleDateString();
     b.addEventListener('click', (e) => {
-      if (e.target.closest('.del')) return;
+      if (e.target.closest('.del')) {
+        storeProjects(listProjects().filter((x) => x.name !== p.name));
+        if (S.projectName === p.name) { S.projectName = null; try { localStorage.removeItem('ltfabrik.lastProject'); } catch { /* */ } }
+        updateProjectUI();
+        e.stopPropagation();
+        return;
+      }
+      closeFileMenu();
       openProject(p.name);
-    });
-    b.querySelector('.del').addEventListener('click', () => {
-      storeProjects(listProjects().filter((x) => x.name !== p.name));
-      if (S.projectName === p.name) { S.projectName = null; try { localStorage.removeItem('ltfabrik.lastProject'); } catch { /* */ } }
-      updateProjectUI();
     });
     list.appendChild(b);
   }
@@ -1144,6 +1153,9 @@ function chooseRows(sl, s, mode, geoms, subset) {
   const words = subset || wctx.words;
   if (!words.length) return null;
 
+  // brugeren kan tvinge et bestemt antal linjer pr. slide
+  if (sl.ov.rows) return packK(words, sl.ov.rows, wctx);
+
   const score = (rows) => {
     const m = rowMetrics(rows, wctx);
     let worst = Infinity;
@@ -1335,7 +1347,7 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
 
 function layoutSig(sl, s) {
   return JSON.stringify([s.formats.map((f) => [f.W, f.H]), s.pad, s.layout, s.align,
-    s.maxScale, s.charLimit, s.sidebar, s.furniture, sl.ov.mode, sl.ov.img !== false]);
+    s.maxScale, s.charLimit, s.sidebar, s.furniture, sl.ov.mode, sl.ov.img !== false, sl.ov.rows || 0]);
 }
 
 function layoutFor(sl, s) {
@@ -1461,6 +1473,13 @@ function buildCards(counts) {
         <option value="oneline">One line</option>
         <option value="crop">Crop</option>
       </select>
+      <select class="rowsel" title="Force a specific number of lines">
+        <option value="">Lines: auto</option>
+        <option value="1">1 line</option>
+        <option value="2">2 lines</option>
+        <option value="3">3 lines</option>
+        <option value="4">4 lines</option>
+      </select>
       <div class="sl"><span>vertical</span><input type="range" min="-100" max="100" value="0"></div>
       <input type="color" class="colpick" title="Text color for this slide">
       <button class="skip colreset" title="Back to default color" style="display:none">↺</button>
@@ -1469,6 +1488,13 @@ function buildCards(counts) {
     const sel = ctrls.querySelector('select');
     sel.value = sl.ov.mode;
     sel.addEventListener('change', () => { sl.ov.mode = sel.value; saveDeckState(); renderAllSoon(); });
+    const rowSel = ctrls.querySelector('.rowsel');
+    rowSel.value = sl.ov.rows ? String(sl.ov.rows) : '';
+    rowSel.addEventListener('change', () => {
+      sl.ov.rows = +rowSel.value || null;
+      saveDeckState();
+      renderOne(sl);
+    });
     const rng = ctrls.querySelector('input[type=range]');
     rng.value = sl.ov.off;
     rng.title = 'Vertical position — double-click resets';
@@ -1824,6 +1850,7 @@ function syncCardCtrls(sl) {
   const c = sl._ctrls;
   if (!c) return;
   c.querySelector('select').value = sl.ov.mode;
+  c.querySelector('.rowsel').value = sl.ov.rows ? String(sl.ov.rows) : '';
   c.querySelector('input[type=range]').value = sl.ov.off;
   c.querySelector('.colpick').value = sl.ov.color || '#ffffff';
   c.querySelector('.colreset').style.display = sl.ov.color ? '' : 'none';
@@ -1834,6 +1861,7 @@ function syncCardCtrls(sl) {
 
 function syncViewerCtrls(sl) {
   $('lvMode').value = sl.ov.mode;
+  $('lvRows').value = sl.ov.rows ? String(sl.ov.rows) : '';
   $('lvOff').value = sl.ov.off;
   $('lvColor').value = sl.ov.color || '#ffffff';
   $('lvColorReset').style.display = sl.ov.color ? '' : 'none';
@@ -1894,6 +1922,13 @@ $('lvMode').addEventListener('change', async () => {
   if (idx < 0) idx = viewUnits.findIndex((u) => u.sl === sl);
   await showUnit(idx < 0 ? Math.min(viewIdx, viewUnits.length - 1) : idx);
 });
+$('lvRows').addEventListener('change', async () => {
+  const { sl } = lvUnit();
+  if (!sl) return;
+  sl.ov.rows = +$('lvRows').value || null;
+  saveDeckState(); syncCardCtrls(sl); renderOne(sl);
+  await showUnit(viewIdx);
+});
 $('lvOff').addEventListener('input', debounce(async () => {
   const { sl } = lvUnit();
   if (!sl) return;
@@ -1934,27 +1969,122 @@ $('lvSkip').addEventListener('click', async () => {
 
 $('clearDeck').addEventListener('click', clearDeck);
 
-// projekt-knapper
-$('projSave').addEventListener('click', () => {
-  if (S.projectName) saveProject(S.projectName);
-  else { $('projNameRow').style.display = ''; $('projNameInput').value = autoProjectName(); $('projNameInput').focus(); }
+// File-menu i toppen
+function closeFileMenu() { $('fileMenu').classList.remove('open'); }
+$('fileBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  $('fileMenu').classList.toggle('open');
 });
-$('projSaveAs').addEventListener('click', () => {
-  $('projNameRow').style.display = '';
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#fileMenu')) closeFileMenu();
+});
+
+function showNameDlg() {
   $('projNameInput').value = S.projectName || autoProjectName();
+  $('nameDlg').classList.add('on');
   $('projNameInput').focus();
   $('projNameInput').select();
-});
+}
+function doSave() {
+  if (!S.slides.length) { toast('Load some slides first.', true); return; }
+  if (S.projectName) saveProject(S.projectName);
+  else showNameDlg();
+}
+$('miSave').addEventListener('click', () => { closeFileMenu(); doSave(); });
+$('miSaveAs').addEventListener('click', () => { closeFileMenu(); if (S.slides.length) showNameDlg(); else toast('Load some slides first.', true); });
+$('miImportFiles').addEventListener('click', () => { closeFileMenu(); $('filePick').click(); });
+$('miImportFolder').addEventListener('click', () => { closeFileMenu(); $('dirPick').click(); });
+$('miClear').addEventListener('click', () => { closeFileMenu(); clearDeck(); });
+
 function commitProjectName() {
   const name = $('projNameInput').value.trim();
   if (!name) return;
-  if (saveProject(name)) $('projNameRow').style.display = 'none';
+  if (saveProject(name)) $('nameDlg').classList.remove('on');
 }
 $('projNameOk').addEventListener('click', commitProjectName);
+$('projNameCancel').addEventListener('click', () => $('nameDlg').classList.remove('on'));
 $('projNameInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') commitProjectName();
-  if (e.key === 'Escape') $('projNameRow').style.display = 'none';
+  if (e.key === 'Escape') $('nameDlg').classList.remove('on');
+  e.stopPropagation();
 });
+
+// Ctrl+S gemmer, Ctrl+, åbner Preferences
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); doSave(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); openPrefs(); }
+});
+
+/* -------------------------------- preferences ------------------------------- */
+
+const ACCENTS = [
+  { id: 'amber', c: '#f0a62b', hi: '#ffc15e' },
+  { id: 'blue', c: '#3d9bff', hi: '#6fb8ff' },
+  { id: 'green', c: '#39c26f', hi: '#57d98a' },
+  { id: 'violet', c: '#9b7bff', hi: '#b79dff' },
+  { id: 'red', c: '#ff5a5f', hi: '#ff8085' },
+  { id: 'teal', c: '#2fc6c0', hi: '#5ad9d4' },
+];
+const DEFAULT_PREFS = { theme: 'dark', accent: 'amber', motion: false, reopen: true, format: 'png' };
+
+function loadPrefs() {
+  let p = {};
+  try { p = JSON.parse(localStorage.getItem('ltfabrik.prefs')) || {}; } catch { /* */ }
+  return { ...DEFAULT_PREFS, ...p };
+}
+function savePrefs(p) { try { localStorage.setItem('ltfabrik.prefs', JSON.stringify(p)); } catch { /* */ } }
+
+function applyPrefs(p) {
+  const root = document.documentElement;
+  root.setAttribute('data-theme', p.theme);
+  const acc = ACCENTS.find((a) => a.id === p.accent) || ACCENTS[0];
+  root.style.setProperty('--accent', acc.c);
+  root.style.setProperty('--accent-hi', acc.hi);
+  root.classList.toggle('reduce-motion', !!p.motion);
+  // default filtype spejles til eksport-kontrollen
+  if ($('format').value !== p.format) { $('format').value = p.format; saveSettings(); }
+}
+
+function openPrefs() {
+  const p = loadPrefs();
+  // theme-segment
+  $('prefTheme').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === p.theme));
+  // accent-swatches
+  const sw = $('prefAccent');
+  sw.innerHTML = '';
+  for (const a of ACCENTS) {
+    const b = document.createElement('button');
+    b.style.setProperty('--sw', a.c);
+    b.className = a.id === p.accent ? 'on' : '';
+    b.title = a.id;
+    b.addEventListener('click', () => {
+      const cur = loadPrefs(); cur.accent = a.id; savePrefs(cur); applyPrefs(cur);
+      sw.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+    });
+    sw.appendChild(b);
+  }
+  $('prefMotion').checked = !!p.motion;
+  $('prefReopen').checked = !!p.reopen;
+  $('prefFormat').value = p.format;
+  $('prefVersion').textContent = S.appVersion || 'local';
+  $('prefsDlg').classList.add('on');
+}
+
+$('prefTheme').querySelectorAll('button').forEach((b) => {
+  b.addEventListener('click', () => {
+    const p = loadPrefs(); p.theme = b.dataset.v; savePrefs(p); applyPrefs(p);
+    $('prefTheme').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  });
+});
+$('prefMotion').addEventListener('change', () => { const p = loadPrefs(); p.motion = $('prefMotion').checked; savePrefs(p); applyPrefs(p); });
+$('prefReopen').addEventListener('change', () => { const p = loadPrefs(); p.reopen = $('prefReopen').checked; savePrefs(p); });
+$('prefFormat').addEventListener('change', () => { const p = loadPrefs(); p.format = $('prefFormat').value; savePrefs(p); applyPrefs(p); markDirty(); renderAllSoon(); });
+$('prefsClose').addEventListener('click', () => $('prefsDlg').classList.remove('on'));
+$('prefsDlg').addEventListener('click', (e) => { if (e.target === $('prefsDlg')) $('prefsDlg').classList.remove('on'); });
+$('miPrefs').addEventListener('click', () => { closeFileMenu(); openPrefs(); });
+
+// hent app-version til About (fra /api/caps hvis muligt)
+fetch('/api/caps').then((r) => r.json()).then((c) => { if (c.version) S.appVersion = c.version; }).catch(() => {});
 
 // advarsel ved lukning med usavede ændringer.
 // I Electron håndteres det af en pæn dialog i main-processen; i browseren
@@ -2034,6 +2164,7 @@ drop.addEventListener('drop', async (e) => {
 // debug-hook til automatiseret test
 window.__lt = { S, loadServerFolder, renderAll, getSettings, resolveMode, geomFor, chooseRows, partsOf, layoutFor, slideBlob, drawSlide, zipWriter };
 
+applyPrefs(loadPrefs());
 restoreSettings();
 updateProjectUI();
 loadServerFolders();

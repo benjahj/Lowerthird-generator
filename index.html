@@ -3,15 +3,31 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LT Fabrik — lower thirds from slides</title>
+<title>LT Factory — lower thirds from slides</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
 <header class="topbar">
   <div class="tally" id="tally"></div>
-  <div class="brand">LT<em>·</em>FABRIK</div>
-  <div class="brand-sub">slides &rarr; lower thirds</div>
+  <div class="brand">LT<em>·</em>FACTORY</div>
+  <div class="menu" id="fileMenu">
+    <button class="menu-btn" id="fileBtn">File <span>▾</span></button>
+    <div class="menu-drop" id="fileDrop">
+      <button class="mi" id="miSave">Save <span class="kbd">Ctrl+S</span></button>
+      <button class="mi" id="miSaveAs">Save as…</button>
+      <div class="mi-sep"></div>
+      <div class="mi-head">Recent projects</div>
+      <div id="miRecent"></div>
+      <div class="mi-sep"></div>
+      <button class="mi" id="miImportFiles">Import files…</button>
+      <button class="mi" id="miImportFolder">Import folder…</button>
+      <button class="mi" id="miClear">Clear all</button>
+      <div class="mi-sep"></div>
+      <button class="mi" id="miPrefs">Preferences… <span class="kbd">Ctrl+,</span></button>
+    </div>
+  </div>
+  <span class="proj-name none" id="projName"></span>
   <div class="top-status">
     <span id="statusText">ready</span>
     <div class="progress" id="progress"><div></div></div>
@@ -20,20 +36,6 @@
 
 <div class="app">
   <aside class="panel">
-
-    <section class="sect">
-      <h2>PROJECT</h2>
-      <div class="row"><span class="proj-name" id="projName">No project</span></div>
-      <div class="row">
-        <button class="ghost" id="projSave">Save</button>
-        <button class="ghost" id="projSaveAs">Save as…</button>
-      </div>
-      <div class="row" id="projNameRow" style="display:none">
-        <input type="text" id="projNameInput" placeholder="Project name…">
-        <button class="ghost" id="projNameOk" style="width:auto">OK</button>
-      </div>
-      <div class="folder-list" id="projList"></div>
-    </section>
 
     <section class="sect">
       <h2>SOURCE</h2>
@@ -206,7 +208,7 @@
 
   <main class="main" id="main">
     <div class="empty" id="emptyState">
-      <div class="logo">LT<em>·</em>FABRIK</div>
+      <div class="logo">LT<em>·</em>FACTORY</div>
       <p class="empty-lead">Slides in — lower thirds out. Without ever changing the text.</p>
       <ol class="steps">
         <li><b>Pick your slides</b><span>Click a folder on the left, or drag images in here.</span></li>
@@ -224,6 +226,66 @@
 
 <div class="toast" id="toast"></div>
 
+<div class="dlg" id="prefsDlg">
+  <div class="dlg-box prefs-box">
+    <div class="prefs-head">
+      <div class="dlg-title">Preferences</div>
+      <button class="prefs-close" id="prefsClose" title="Close">✕</button>
+    </div>
+
+    <div class="pref-group">APPEARANCE</div>
+    <div class="pref-row">
+      <div class="pref-lbl"><b>Theme</b><span>Color scheme of the app</span></div>
+      <div class="seg" id="prefTheme">
+        <button data-v="dark">Dark</button>
+        <button data-v="midnight">Midnight</button>
+        <button data-v="light">Light</button>
+      </div>
+    </div>
+    <div class="pref-row">
+      <div class="pref-lbl"><b>Accent</b><span>Highlight color</span></div>
+      <div class="swatches" id="prefAccent"></div>
+    </div>
+    <div class="pref-row">
+      <div class="pref-lbl"><b>Reduce motion</b><span>Turn off fades and animations</span></div>
+      <label class="switch"><input type="checkbox" id="prefMotion"><span></span></label>
+    </div>
+
+    <div class="pref-group">STARTUP</div>
+    <div class="pref-row">
+      <div class="pref-lbl"><b>Reopen last project</b><span>Continue where you left off on launch</span></div>
+      <label class="switch"><input type="checkbox" id="prefReopen" checked><span></span></label>
+    </div>
+
+    <div class="pref-group">EXPORT</div>
+    <div class="pref-row">
+      <div class="pref-lbl"><b>Default file type</b><span>Format for new exports (16:9 canvas is always PNG)</span></div>
+      <select id="prefFormat" style="width:120px">
+        <option value="png">PNG</option>
+        <option value="jpeg">JPG</option>
+      </select>
+    </div>
+
+    <div class="pref-group">ABOUT</div>
+    <div class="pref-about">
+      <div><b>LT Factory</b> · <span id="prefVersion">—</span></div>
+      <div>Turn 16:9 slides into lower thirds. Runs fully offline.</div>
+      <a href="https://github.com/benjahj/Lowerthird-generator/releases" target="_blank" rel="noopener">Releases &amp; updates ↗</a>
+    </div>
+  </div>
+</div>
+
+<div class="dlg" id="nameDlg">
+  <div class="dlg-box">
+    <div class="dlg-title">Save project as</div>
+    <input type="text" id="projNameInput" placeholder="Project name…">
+    <div class="dlg-row">
+      <button class="ghost" id="projNameCancel" style="width:auto">Cancel</button>
+      <button class="big" id="projNameOk" style="width:auto;padding:8px 18px">Save</button>
+    </div>
+  </div>
+</div>
+
 <div class="lightbox" id="lightbox">
   <button class="light-btn light-close" id="lightClose" title="Close (Esc)">✕</button>
   <button class="light-btn light-prev" id="lightPrev" title="Previous (←)">‹</button>
@@ -240,6 +302,13 @@
       <option value="stack">Lines</option>
       <option value="oneline">One line</option>
       <option value="crop">Crop</option>
+    </select>
+    <select id="lvRows" title="Force a specific number of lines">
+      <option value="">Lines: auto</option>
+      <option value="1">1 line</option>
+      <option value="2">2 lines</option>
+      <option value="3">3 lines</option>
+      <option value="4">4 lines</option>
     </select>
     <div class="sl"><span>vertical</span><input type="range" id="lvOff" min="-100" max="100" value="0"></div>
     <input type="color" id="lvColor" class="colpick" title="Text color for this slide">

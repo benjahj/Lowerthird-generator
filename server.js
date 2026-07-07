@@ -105,7 +105,7 @@ function startServer(opts = {}) {
 
     if (pathname === '/api/caps') {
       res.writeHead(200, { 'Content-Type': MIME['.json'] });
-      res.end(JSON.stringify({ pickroot: !!opts.pickRoot, root: getRoot() }));
+      res.end(JSON.stringify({ pickroot: !!opts.pickRoot, root: getRoot(), version: opts.version || null }));
       return;
     }
 
@@ -171,7 +171,7 @@ module.exports = { startServer };
 // direkte kørsel (node server.js eller SEA-exe)
 if (require.main === module || sea) {
   startServer().then(({ port }) => {
-    console.log('LT Fabrik kører på  http://localhost:' + port);
+    console.log('LT Factory running at  http://localhost:' + port);
     console.log('Billedmapper læses fra: ' + DEFAULT_ROOT);
     console.log('Luk med Ctrl+C (eller luk dette vindue).');
     if (sea && process.platform === 'win32' && process.env.LT_NO_OPEN !== '1') {
