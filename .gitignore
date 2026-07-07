@@ -1,14 +1,22 @@
-# Slide-indhold holdes ude af repoet — læg dine egne slide-mapper her lokalt
-Simple but not easy/
-rEFERENCE/
+# Slide content and projects — keep local material out of the repo.
+# (Put your own slide folders next to the app; they are never committed.)
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+*.bmp
+*.avif
+*.ltproj
 *.zip
 
-# byggede filer
+# Build artifacts
+LT-Factory.exe
 LT-Fabrik.exe
 sea-prep.blob
 dist/
 
-# OS/editor
+# OS / editor
 Thumbs.db
 .DS_Store
 node_modules/
