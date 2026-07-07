@@ -36,3 +36,23 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # usigneret build — signering kræver Apple Developer-konto
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+  # versionsskema: 1.X.0 = stable (auto-update til alle),
+  # 1.X.Y (Y>0) = beta → markeres som pre-release, som installerede apps ignorerer
+  flag-beta:
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Mark beta builds as pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          PATCH=${VER##*.}
+          if [ "$PATCH" != "0" ]; then
+            gh release edit "v$VER" --prerelease --repo "$GITHUB_REPOSITORY"
+            echo "v$VER markeret som pre-release (beta)"
+          else
+            echo "v$VER er en stable release"
+          fi
