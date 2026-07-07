@@ -66,46 +66,22 @@
 <section class="ribbon" id="ribbon">
   <!-- OUTPUT -->
   <div class="rpanel on" data-tab="output">
-    <div class="rgroup">
-      <div class="rg-title">Format A · Stream</div>
-      <div class="rg-body">
-        <label class="fld"><span>Width</span><input type="number" id="outW" value="1920" min="64" step="2"></label>
-        <label class="fld"><span>Height</span><input type="number" id="outH" value="216" min="32" step="2"></label>
-        <label class="fld"><span>Suffix</span><input type="text" id="suffixA" value="_stream"></label>
-        <label class="fld"><span>Canvas</span>
-          <select id="canvasA" title="Full 16:9 frame places the strip on a transparent 1920×1080 canvas (PNG)">
-            <option value="strip" selected>Strip only</option>
-            <option value="top">16:9 top</option>
-            <option value="middle">16:9 center</option>
-            <option value="bottom">16:9 bottom</option>
-          </select>
-        </label>
-        <div class="presets" id="presets">
-          <button class="chip on" data-w="1920" data-h="216">20%</button>
-          <button class="chip" data-w="1920" data-h="270">25%</button>
-          <button class="chip" data-w="1920" data-h="324">30%</button>
-          <button class="chip" data-w="1920" data-h="360">33%</button>
-        </div>
+    <div class="rgroup" style="flex:1;min-width:520px">
+      <div class="rg-title">Output formats <span class="rg-sub">— 1 to 4, name them yourself</span></div>
+      <div class="format-list" id="formatList"></div>
+      <div class="format-tools">
+        <button class="btn-ghost" id="addFormat">+ Add format</button>
+        <span class="dot">·</span>
+        <span class="preset-lbl">Quick add:</span>
+        <button class="chip" data-name="Stream" data-w="1920" data-h="216">Stream 1920×216</button>
+        <button class="chip" data-name="LED" data-w="936" data-h="208">LED 936×208</button>
+        <button class="chip" data-name="1080p" data-w="1920" data-h="1080">1080p</button>
+        <button class="chip" data-name="Lower third" data-w="1920" data-h="1080" data-canvas="bottom">1080p LT (transparent)</button>
+        <button class="chip" data-name="Square" data-w="1080" data-h="1080">Square 1080</button>
+        <button class="chip" data-name="Vertical" data-w="1080" data-h="1920">Vertical 9:16</button>
       </div>
     </div>
-
-    <div class="rgroup" id="fmtBGroup">
-      <div class="rg-title"><label class="chk"><input type="checkbox" id="fmtBOn" checked> Format B · LED</label></div>
-      <div class="rg-body" id="fmtBRow">
-        <label class="fld"><span>Width</span><input type="number" id="outW2" value="936" min="64" step="2"></label>
-        <label class="fld"><span>Height</span><input type="number" id="outH2" value="208" min="32" step="2"></label>
-        <label class="fld"><span>Suffix</span><input type="text" id="suffixB" value="_led"></label>
-        <label class="fld"><span>Canvas</span>
-          <select id="canvasB">
-            <option value="strip" selected>Strip only</option>
-            <option value="top">16:9 top</option>
-            <option value="middle">16:9 center</option>
-            <option value="bottom">16:9 bottom</option>
-          </select>
-        </label>
-      </div>
-    </div>
-    <p class="rnote">Both formats always carry the same text — line breaks and size adapt to each.</p>
+    <p class="rnote">Every format carries exactly the same text — line breaks and size adapt to each. Set Canvas to a 16:9 option for a transparent full-frame PNG.</p>
   </div>
 
   <!-- TEXT -->
@@ -342,10 +318,7 @@
   <button class="light-btn light-close" id="lightClose" title="Close (Esc)">✕</button>
   <button class="light-btn light-prev" id="lightPrev" title="Previous (←)">‹</button>
   <button class="light-btn light-next" id="lightNext" title="Next (→)">›</button>
-  <div class="light-stack" id="lightStack">
-    <canvas id="lightCanvas"></canvas>
-    <canvas id="lightCanvasB"></canvas>
-  </div>
+  <div class="light-stack" id="lightStack"></div>
   <div class="light-meta" id="lightMeta"></div>
   <div class="light-ctrls" id="lightCtrls">
     <select id="lvMode">

@@ -43,9 +43,11 @@ last project on launch, and set the default export file type.
 
 ## What it does for you
 
-- **Two formats at once** — e.g. 1920×216 for your stream and 936×208 for an
-  LED screen. Both always carry exactly the same text; line breaks and text
-  size adapt to each format.
+- **Your own formats (1–4)** — in the **Output** tab, define as many output
+  formats as you need, each with its own name, size, file suffix and canvas
+  (not locked to "stream/LED"). Every format always carries exactly the same
+  text; line breaks and size adapt to each. Each preview is colour-labelled so
+  you can tell them apart.
 - **Transparent 16:9 option** — set *Canvas* to "16:9 · bottom" (or top/center)
   and each file comes out as a full 1920×1080 PNG with a transparent
   background, ready to drop into ProPresenter, vMix, OBS and similar.

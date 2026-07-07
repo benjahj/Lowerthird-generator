@@ -18,6 +18,7 @@ const S = {
   analyzed: false,
   renderToken: 0,
   manualFrame: false,
+  formats: null, // frie output-formater (sat i init)
 };
 
 const $ = (id) => document.getElementById(id);
@@ -781,23 +782,32 @@ function analyzeSlide(sl) {
 
 /* ------------------------------ indstillinger ------------------------------ */
 
+// Frie output-formater (1-4). Hver har navn, W, H, filnavn-endelse og canvas.
+const DEFAULT_FORMATS = [
+  { name: 'Stream', W: 1920, H: 216, suffix: '_stream', canvas: 'strip' },
+  { name: 'LED', W: 936, H: 208, suffix: '_led', canvas: 'strip' },
+];
+
+function normFormats() {
+  const seen = new Set();
+  return S.formats.slice(0, 4).map((f, i) => {
+    const name = (f.name || `Format ${i + 1}`).trim() || `Format ${i + 1}`;
+    let suffix = (f.suffix || ('_' + name.toLowerCase().replace(/[^\w-]+/g, ''))).trim() || `_f${i + 1}`;
+    if (!suffix.startsWith('_') && !suffix.startsWith('-')) suffix = '_' + suffix;
+    while (seen.has(suffix)) suffix += (i + 1);
+    seen.add(suffix);
+    return {
+      key: 'f' + i, name,
+      W: Math.max(64, Math.round(+f.W) || 1920),
+      H: Math.max(32, Math.round(+f.H) || 216),
+      suffix, canvas: f.canvas || 'strip',
+    };
+  });
+}
+
 function getSettings() {
-  const formats = [{
-    key: 'a',
-    W: Math.max(64, +$('outW').value || 1920),
-    H: Math.max(32, +$('outH').value || 216),
-    suffix: $('suffixA').value || '_stream',
-    canvas: $('canvasA').value || 'strip',
-  }];
-  if ($('fmtBOn').checked) {
-    let suffix = $('suffixB').value || '_led';
-    const W = Math.max(64, +$('outW2').value || 936);
-    const H = Math.max(32, +$('outH2').value || 208);
-    if (suffix === formats[0].suffix) suffix += `_${W}x${H}`;
-    formats.push({ key: 'b', W, H, suffix, canvas: $('canvasB').value || 'strip' });
-  }
   return {
-    formats,
+    formats: normFormats(),
     textColor: $('textColorMode').value === 'custom' ? $('textColor').value : null,
     split: $('splitMode').value,
     charLimit: Math.min(400, Math.max(40, +$('charLimit').value || 200)),
@@ -1067,8 +1077,14 @@ function wordsOf(ana) {
 function natGapFn(ctx) {
   return (prev, cur) => {
     const base = Math.max(ctx.medLineH, (prev.h + cur.h) / 2);
-    let g = cur.li === prev.li && cur.x0 >= prev.x1 ? cur.x0 - prev.x1 : ctx.joinGap;
-    return Math.min(Math.max(g, 0.25 * base), 0.55 * base);
+    if (cur.li === prev.li && cur.x0 >= prev.x1) {
+      const g = cur.x0 - prev.x1;
+      // små huller = bogstaver i SAMME ord (fejl-opdelt) → bevar tæt, INTET
+      // mellemrums-gulv (ellers bliver "lidt" til "li dt")
+      if (g < 0.22 * base) return g;
+      return Math.min(Math.max(g, 0.25 * base), 0.55 * base);
+    }
+    return ctx.joinGap;
   };
 }
 
@@ -1322,6 +1338,7 @@ function tintWord(bmp, sx, sy, sw, sh, bg, color) {
     tintCvs = new OffscreenCanvas(Math.max(w, tintCvs ? tintCvs.width : 1), Math.max(h, tintCvs ? tintCvs.height : 1));
     tintCtx = tintCvs.getContext('2d', { willReadFrequently: true });
   }
+  tintCtx.imageSmoothingEnabled = true; tintCtx.imageSmoothingQuality = 'high';
   tintCtx.clearRect(0, 0, w, h);
   tintCtx.drawImage(bmp, sx, sy, sw, sh, 0, 0, w, h);
   const im = tintCtx.getImageData(0, 0, w, h);
@@ -1540,6 +1557,7 @@ async function renderUnit(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
   canvas.width = Math.max(2, Math.round(fmt.W * pixScale));
   canvas.height = Math.max(2, Math.round(FH * pixScale));
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const y = fmt.canvas === 'top' ? 0 : fmt.canvas === 'middle' ? (FH - fmt.H) / 2 : FH - fmt.H;
   ctx.drawImage(strip, 0, Math.round(y * pixScale));
@@ -1571,12 +1589,12 @@ function buildCards(counts) {
       const card = document.createElement('div');
       card.className = 'card';
       const partLbl = nParts > 1 ? ` · part ${pi + 1}/${nParts}` : '';
+      // ét mærket felt pr. format, så man kan se hvad der er hvad
+      const strips = S.formats.map((f, fi) =>
+        `<div class="fstrip" style="--fc:${FMT_COLORS[fi % 4]}"><div class="fstrip-lab"><span class="dotc"></span><b class="lb-name"></b><span class="lb-dim"></span></div><canvas class="out" data-fi="${fi}"></canvas></div>`).join('');
       card.innerHTML = `
-        <div class="mon"><span class="tick-a"></span><span class="tick-b"></span>
-          <canvas class="out fmt-a"></canvas>
-          <canvas class="out fmt-b"></canvas>
-        </div>
-        <div class="umd"><span class="id">PGM ${String(i + 1).padStart(3, '0')}${partLbl}</span><span class="fn"></span><span class="dims"></span><button class="fsbtn" title="View fullscreen">⛶</button></div>`;
+        <div class="mon"><span class="tick-a"></span><span class="tick-b"></span>${strips}</div>
+        <div class="umd"><span class="id">PGM ${String(i + 1).padStart(3, '0')}${partLbl}</span><span class="fn"></span><button class="fsbtn" title="View fullscreen">⛶</button></div>`;
       card.querySelector('.fn').textContent = sl.name;
       card.querySelector('.fsbtn').addEventListener('click', () => openViewer(sl, pi));
       card.classList.toggle('off', !sl.ov.on);
@@ -1670,24 +1688,25 @@ async function renderOne(sl) {
     if (b) b.style.display = sl.ana.images && sl.ana.images.length && L.mode !== 'crop' ? '' : 'none';
   }
 
+  const maxW = Math.max(...s.formats.map((f) => f.W));
   for (let pi = 0; pi < sl._cards.length; pi++) {
     const card = sl._cards[pi];
-    const cA = card.querySelector('canvas.fmt-a');
-    const cB = card.querySelector('canvas.fmt-b');
-    const rows = L.rows[pi] || [null, null];
+    const rows = L.rows[pi] || [];
+    const strips = card.querySelectorAll('.fstrip');
     try {
-      // ombrydning er PR. FORMAT — stream må have færre linjer end LED
-      await renderUnit(sl, s, s.formats[0], cA, rows[0], L.mode, previewScale(s.formats[0]));
-      cA._ref = { sl, pi, fi: 0 };
-      if (s.formats[1]) {
-        cB.style.display = '';
-        cB.style.width = Math.min(100, (s.formats[1].W / s.formats[0].W) * 100) + '%';
-        await renderUnit(sl, s, s.formats[1], cB, rows[1], L.mode, previewScale(s.formats[1]));
-        cB._ref = { sl, pi, fi: 1 };
-      } else {
-        cB.style.display = 'none';
+      for (let fi = 0; fi < s.formats.length; fi++) {
+        const fmt = s.formats[fi];
+        const strip = strips[fi];
+        if (!strip) continue;
+        const cnv = strip.querySelector('canvas.out');
+        // ombrydning er PR. FORMAT — kortere formater må have flere/færre linjer
+        await renderUnit(sl, s, fmt, cnv, rows[fi] || null, L.mode, previewScale(fmt));
+        cnv._ref = { sl, pi, fi };
+        // smallere formater vises proportionalt mindre, så bredde-forhold ses
+        cnv.style.width = Math.min(100, (fmt.W / maxW) * 100) + '%';
+        strip.querySelector('.lb-name').textContent = fmt.name;
+        strip.querySelector('.lb-dim').textContent = dimStr(fmt);
       }
-      card.querySelector('.dims').textContent = s.formats.map(dimStr).join(' · ');
       card.classList.add('lit'); // fade-in når kortet er tegnet
     } catch (e) {
       console.error(sl.name, e);
@@ -1699,12 +1718,12 @@ async function renderAll() {
   if (!S.analyzed) return;
   S.renderToken++;
   const s = getSettings();
-  // gen-byg kort-gitteret hvis antallet af dele har ændret sig
+  // gen-byg kort-gitteret hvis antallet af dele ELLER formater har ændret sig
   const counts = S.slides.map((sl) => layoutFor(sl, s).parts.length);
-  const sig = counts.join(',');
+  const sig = s.formats.length + '|' + counts.join(',');
   if (sig !== S.cardSig) { S.cardSig = sig; buildCards(counts); }
   S.totalParts = counts.reduce((a, b) => a + b, 0);
-  $('deckMeta').textContent = `${S.slides.length} slides → ${S.totalParts} lower thirds · ` + s.formats.map(dimStr).join(' + ');
+  $('deckMeta').textContent = `${S.slides.length} slides → ${S.totalParts} lower thirds · ` + s.formats.map((f) => `${f.name} ${dimStr(f)}`).join(' + ');
   // markér alle som ændrede; kun de synlige renderes nu, resten ved scroll
   renderQueue.length = 0;
   for (const sl of S.slides) {
@@ -1867,46 +1886,93 @@ async function exportZip() {
 
 /* ---------------------------------- events --------------------------------- */
 
-const SETTING_IDS = ['outW', 'outH', 'outW2', 'outH2', 'suffixA', 'suffixB', 'fmtBOn', 'canvasA', 'canvasB',
-  'pad', 'format', 'layoutMode', 'alignH', 'maxScale', 'charLimit', 'bgMode', 'sidebarMode', 'furnitureMode',
-  'textColorMode', 'textColor', 'splitMode'];
-const NO_RENDER = new Set(['suffixA', 'suffixB', 'format']); // bruges først ved eksport
-const ON_COMMIT = new Set(['outW', 'outH', 'outW2', 'outH2', 'pad', 'charLimit']); // tal: render ved Enter/blur
+const SETTING_IDS = ['pad', 'format', 'layoutMode', 'alignH', 'maxScale', 'charLimit',
+  'bgMode', 'sidebarMode', 'furnitureMode', 'textColorMode', 'textColor', 'splitMode'];
+const NO_RENDER = new Set(['format']); // bruges først ved eksport
+const ON_COMMIT = new Set(['pad', 'charLimit']); // tal: render ved Enter/blur
 
-function syncChips() {
-  document.querySelectorAll('#presets .chip').forEach((c) =>
-    c.classList.toggle('on', +c.dataset.w === +$('outW').value && +c.dataset.h === +$('outH').value));
+const FMT_COLORS = ['#f0a62b', '#3d9bff', '#39c26f', '#9b7bff'];
+
+// dynamisk format-editor (i Output-fanen)
+function buildFormatEditor() {
+  const list = $('formatList');
+  if (!list) return;
+  list.innerHTML = '';
+  S.formats.forEach((f, i) => {
+    const row = document.createElement('div');
+    row.className = 'format-row';
+    row.style.setProperty('--fc', FMT_COLORS[i % 4]);
+    row.innerHTML = `
+      <div class="fmt-swatch"></div>
+      <label class="fld grow"><span>Name</span><input type="text" class="f-name"></label>
+      <label class="fld"><span>Width</span><input type="number" class="f-w" min="64" step="2"></label>
+      <span class="times">×</span>
+      <label class="fld"><span>Height</span><input type="number" class="f-h" min="32" step="2"></label>
+      <label class="fld"><span>File suffix</span><input type="text" class="f-suffix"></label>
+      <label class="fld"><span>Canvas</span>
+        <select class="f-canvas">
+          <option value="strip">Strip only</option>
+          <option value="top">16:9 top</option>
+          <option value="middle">16:9 center</option>
+          <option value="bottom">16:9 bottom</option>
+        </select>
+      </label>
+      <button class="x" title="Remove format" ${S.formats.length <= 1 ? 'disabled' : ''}>✕</button>`;
+    row.querySelector('.f-name').value = f.name || '';
+    row.querySelector('.f-w').value = f.W;
+    row.querySelector('.f-h').value = f.H;
+    row.querySelector('.f-suffix').value = f.suffix || '';
+    row.querySelector('.f-canvas').value = f.canvas || 'strip';
+    const upd = (render) => { saveFormats(); markDirty(); if (render) renderAllSoon(); };
+    row.querySelector('.f-name').addEventListener('input', (e) => { f.name = e.target.value; upd(false); });
+    row.querySelector('.f-suffix').addEventListener('input', (e) => { f.suffix = e.target.value; upd(false); });
+    row.querySelector('.f-w').addEventListener('change', (e) => { f.W = +e.target.value; upd(true); });
+    row.querySelector('.f-h').addEventListener('change', (e) => { f.H = +e.target.value; upd(true); });
+    row.querySelector('.f-canvas').addEventListener('change', (e) => { f.canvas = e.target.value; upd(true); });
+    row.querySelector('.x').addEventListener('click', () => {
+      if (S.formats.length <= 1) return;
+      S.formats.splice(i, 1); buildFormatEditor(); saveFormats(); markDirty(); renderAllSoon();
+    });
+    list.appendChild(row);
+  });
 }
+function addFormat(f) {
+  if (S.formats.length >= 4) { toast('Up to 4 formats.', true); return; }
+  const n = S.formats.length + 1;
+  S.formats.push(f || { name: `Format ${n}`, W: 1920, H: 1080, suffix: `_f${n}`, canvas: 'strip' });
+  buildFormatEditor(); saveFormats(); markDirty(); renderAllSoon();
+}
+function saveFormats() { try { localStorage.setItem('ltfactory.formats', JSON.stringify(S.formats)); } catch { /* */ } }
 
-// indstillinger huskes mellem sessioner
+// øvrige indstillinger huskes mellem sessioner
 function snapshotSettings() {
-  const o = {};
-  for (const id of SETTING_IDS) o[id] = id === 'fmtBOn' ? $(id).checked : $(id).value;
+  const o = { formats: S.formats.map((f) => ({ ...f })) };
+  for (const id of SETTING_IDS) o[id] = $(id).value;
   return o;
 }
 function applySettings(o) {
   if (!o) return;
-  for (const id of SETTING_IDS) {
-    if (!(id in o)) continue;
-    if (id === 'fmtBOn') $(id).checked = !!o[id]; else $(id).value = o[id];
-  }
-  syncChips();
-  $('fmtBRow').style.opacity = $('fmtBOn').checked ? '1' : '0.4';
+  if (Array.isArray(o.formats) && o.formats.length) { S.formats = o.formats.map((f) => ({ ...f })); buildFormatEditor(); saveFormats(); }
+  for (const id of SETTING_IDS) { if (id in o) $(id).value = o[id]; }
   $('textColorRow').style.display = $('textColorMode').value === 'custom' ? '' : 'none';
 }
 function saveSettings() {
   try { localStorage.setItem('ltfabrik.settings.v1', JSON.stringify(snapshotSettings())); } catch { /* privat browsing */ }
 }
 function restoreSettings() {
+  // formater
+  try { const f = JSON.parse(localStorage.getItem('ltfactory.formats')); if (Array.isArray(f) && f.length) S.formats = f; } catch { /* */ }
+  if (!S.formats) S.formats = DEFAULT_FORMATS.map((f) => ({ ...f }));
+  buildFormatEditor();
+  // øvrige felter
   let o = null;
   try { o = JSON.parse(localStorage.getItem('ltfabrik.settings.v1')); } catch { /* ignorér */ }
-  applySettings(o);
+  if (o) for (const id of SETTING_IDS) { if (id in o) $(id).value = o[id]; }
+  $('textColorRow').style.display = $('textColorMode').value === 'custom' ? '' : 'none';
 }
 
 for (const id of SETTING_IDS) {
   $(id).addEventListener(ON_COMMIT.has(id) ? 'change' : 'input', () => {
-    if (id === 'outW' || id === 'outH') syncChips();
-    if (id === 'fmtBOn') $('fmtBRow').style.opacity = $('fmtBOn').checked ? '1' : '0.4';
     if (id === 'textColorMode') $('textColorRow').style.display = $('textColorMode').value === 'custom' ? '' : 'none';
     saveSettings();
     markDirty();
@@ -1914,15 +1980,12 @@ for (const id of SETTING_IDS) {
   });
 }
 
-document.querySelectorAll('#presets .chip').forEach((c) => {
-  c.addEventListener('click', () => {
-    $('outW').value = c.dataset.w;
-    $('outH').value = c.dataset.h;
-    syncChips();
-    saveSettings();
-    markDirty();
-    renderAllSoon();
-  });
+$('addFormat').addEventListener('click', () => addFormat());
+document.querySelectorAll('.format-tools .chip').forEach((c) => {
+  c.addEventListener('click', () => addFormat({
+    name: c.dataset.name, W: +c.dataset.w, H: +c.dataset.h,
+    suffix: '_' + c.dataset.name.toLowerCase().replace(/[^\w-]+/g, ''), canvas: c.dataset.canvas || 'strip',
+  }));
 });
 
 /* ------------------- fullscreen-viewer med navigation ---------------------- */
@@ -1948,21 +2011,24 @@ async function showUnit(idx) {
   const { sl, pi } = viewUnits[viewIdx];
   const s = getSettings();
   const L = layoutFor(sl, s);
-  const rows = L.rows[pi] || [null, null];
-  await renderUnit(sl, s, s.formats[0], $('lightCanvas'), rows[0], L.mode, 1);
-  const cB = $('lightCanvasB');
-  if (s.formats[1]) {
-    cB.style.display = '';
-    cB.style.width = Math.min(100, (s.formats[1].W / s.formats[0].W) * 100) + '%';
-    await renderUnit(sl, s, s.formats[1], cB, rows[1], L.mode, 1);
-  } else {
-    cB.style.display = 'none';
+  const rows = L.rows[pi] || [];
+  // byg ét mærket felt pr. format (dynamisk 1-4)
+  const stack = $('lightStack');
+  const maxW = Math.max(...s.formats.map((f) => f.W));
+  stack.innerHTML = s.formats.map((f, fi) =>
+    `<div class="lstrip" style="--fc:${FMT_COLORS[fi % 4]};width:${Math.min(100, (f.W / maxW) * 100)}%">
+       <div class="lstrip-lab"><span class="dotc"></span><b></b><span class="ld"></span></div>
+       <canvas></canvas></div>`).join('');
+  const strips = stack.querySelectorAll('.lstrip');
+  for (let fi = 0; fi < s.formats.length; fi++) {
+    const fmt = s.formats[fi];
+    await renderUnit(sl, s, fmt, strips[fi].querySelector('canvas'), rows[fi] || null, L.mode, 1);
+    strips[fi].querySelector('b').textContent = fmt.name;
+    strips[fi].querySelector('.ld').textContent = dimStr(fmt);
   }
   const partLbl = L.parts.length > 1 ? ` · part ${pi + 1}/${L.parts.length}` : '';
   $('lightMeta').textContent =
-    `${viewIdx + 1}/${viewUnits.length} · ${sl.name}${partLbl} · ` +
-    s.formats.map(dimStr).join(' + ') +
-    ' · ← → navigate · Esc close';
+    `${viewIdx + 1}/${viewUnits.length} · ${sl.name}${partLbl} · ← → navigate · Esc close`;
   syncViewerCtrls(sl);
 }
 
