@@ -10,13 +10,15 @@
 *.ltproj
 *.zip
 
+# macOS / OS / editor cruft
+__MACOSX/
+._*
+Thumbs.db
+.DS_Store
+
 # Build artifacts
 LT-Factory.exe
 LT-Fabrik.exe
 sea-prep.blob
 dist/
-
-# OS / editor
-Thumbs.db
-.DS_Store
 node_modules/
