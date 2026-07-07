@@ -66,22 +66,14 @@
 <section class="ribbon" id="ribbon">
   <!-- OUTPUT -->
   <div class="rpanel on" data-tab="output">
-    <div class="rgroup" style="flex:1;min-width:520px">
-      <div class="rg-title">Output formats <span class="rg-sub">— 1 to 4, name them yourself</span></div>
-      <div class="format-list" id="formatList"></div>
-      <div class="format-tools">
-        <button class="btn-ghost" id="addFormat">+ Add format</button>
-        <span class="dot">·</span>
-        <span class="preset-lbl">Quick add:</span>
-        <button class="chip" data-name="Stream" data-w="1920" data-h="216">Stream 1920×216</button>
-        <button class="chip" data-name="LED" data-w="936" data-h="208">LED 936×208</button>
-        <button class="chip" data-name="1080p" data-w="1920" data-h="1080">1080p</button>
-        <button class="chip" data-name="Lower third" data-w="1920" data-h="1080" data-canvas="bottom">1080p LT (transparent)</button>
-        <button class="chip" data-name="Square" data-w="1080" data-h="1080">Square 1080</button>
-        <button class="chip" data-name="Vertical" data-w="1080" data-h="1920">Vertical 9:16</button>
+    <div class="rgroup" style="flex:1;min-width:420px">
+      <div class="rg-title">Output formats</div>
+      <div class="rg-body" style="align-items:center;gap:14px">
+        <div class="format-summary" id="formatSummary"></div>
+        <button class="btn-ghost" id="editFormats">Edit formats…</button>
       </div>
     </div>
-    <p class="rnote">Every format carries exactly the same text — line breaks and size adapt to each. Set Canvas to a 16:9 option for a transparent full-frame PNG.</p>
+    <p class="rnote">Formats are chosen when you start a project. Click “Edit formats…” for small corrections later.</p>
   </div>
 
   <!-- TEXT -->
@@ -238,7 +230,7 @@
         <div class="start-h">Start</div>
         <button class="start-card" id="startNew">
           <div class="sc-ic">＋</div>
-          <div><b>New project</b><span>Pick a folder of slides</span></div>
+          <div><b>New project</b><span>Set your formats, then pick slides</span></div>
         </button>
         <button class="start-card" id="startImport">
           <div class="sc-ic">↧</div>
@@ -297,6 +289,43 @@
       <div><b>LT Factory</b> · <span id="prefVersion">—</span></div>
       <div>Turn 16:9 slides into lower thirds. Runs fully offline.</div>
       <a href="https://github.com/benjahj/Lowerthird-generator/releases" target="_blank" rel="noopener">Releases &amp; updates ↗</a>
+    </div>
+  </div>
+</div>
+
+<div class="dlg" id="formatsDlg">
+  <div class="dlg-box formats-box">
+    <div class="prefs-head">
+      <div class="dlg-title" id="formatsTitle">New project</div>
+      <button class="prefs-close" id="formatsClose" title="Close">✕</button>
+    </div>
+    <p class="dlg-note" id="formatsIntro">Set up the output formats for this project — you can name them and add up to four. You can adjust these later under Output → Edit formats.</p>
+
+    <div class="pref-row" id="setupNameRow">
+      <div class="pref-lbl"><b>Project name</b><span>Optional — used when you save</span></div>
+      <input type="text" id="setupName" placeholder="Untitled project" style="width:220px">
+    </div>
+
+    <div class="pref-group">FORMATS · 1 TO 4</div>
+    <div class="format-list" id="formatListDlg"></div>
+    <div class="format-tools">
+      <button class="btn-ghost" id="addFormat">+ Add format</button>
+      <span class="dot">·</span>
+      <span class="preset-lbl">Quick add:</span>
+      <button class="chip" data-name="Stream" data-w="1920" data-h="216">Stream 1920×216</button>
+      <button class="chip" data-name="LED" data-w="936" data-h="208">LED 936×208</button>
+      <button class="chip" data-name="1080p" data-w="1920" data-h="1080">1080p</button>
+      <button class="chip" data-name="Lower third" data-w="1920" data-h="1080" data-canvas="bottom">1080p LT (transparent)</button>
+      <button class="chip" data-name="Square" data-w="1080" data-h="1080">Square 1080</button>
+      <button class="chip" data-name="Vertical" data-w="1080" data-h="1920">Vertical 9:16</button>
+    </div>
+
+    <div class="dlg-row formats-foot" id="setupFoot">
+      <button class="btn-ghost" id="fmtImportFiles">Choose images…</button>
+      <button class="btn-primary" id="fmtChooseFolder">Choose slides folder…</button>
+    </div>
+    <div class="dlg-row" id="editFoot" style="display:none">
+      <button class="btn-primary" id="fmtDone">Done</button>
     </div>
   </div>
 </div>

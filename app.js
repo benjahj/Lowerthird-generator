@@ -390,6 +390,8 @@ function clearDeck() {
 
 async function ingest(slides, savedFrame) {
   hideStart();
+  if (typeof closeFormatsDialog === 'function') closeFormatsDialog();
+  if (S.pendingName) { S.projectName = S.pendingName; S.pendingName = null; }
   for (const b of bmpCache.values()) { try { b.bmp.close(); } catch { /* i brug */ } }
   bmpCache.clear();
   S.slides = slides;
@@ -1893,9 +1895,25 @@ const ON_COMMIT = new Set(['pad', 'charLimit']); // tal: render ved Enter/blur
 
 const FMT_COLORS = ['#f0a62b', '#3d9bff', '#39c26f', '#9b7bff'];
 
-// dynamisk format-editor (i Output-fanen)
+function updateFormatSummary() {
+  const el = $('formatSummary');
+  if (!el) return;
+  el.innerHTML = '';
+  S.formats.forEach((f, i) => {
+    const span = document.createElement('span');
+    span.className = 'fs-item';
+    span.style.setProperty('--fc', FMT_COLORS[i % 4]);
+    span.innerHTML = `<span class="fs-dot"></span><b></b><span class="fs-dim"></span>`;
+    span.querySelector('b').textContent = f.name || `Format ${i + 1}`;
+    span.querySelector('.fs-dim').textContent = `${f.W}×${(f.canvas && f.canvas !== 'strip') ? Math.round(f.W * 9 / 16) : f.H}`;
+    el.appendChild(span);
+  });
+}
+
+// dynamisk format-editor (i formats-dialogen)
 function buildFormatEditor() {
-  const list = $('formatList');
+  updateFormatSummary();
+  const list = $('formatListDlg');
   if (!list) return;
   list.innerHTML = '';
   S.formats.forEach((f, i) => {
@@ -1987,6 +2005,28 @@ document.querySelectorAll('.format-tools .chip').forEach((c) => {
     suffix: '_' + c.dataset.name.toLowerCase().replace(/[^\w-]+/g, ''), canvas: c.dataset.canvas || 'strip',
   }));
 });
+
+// formats-dialog: opsætning ved projektstart (mode 'new') eller senere rettelser ('edit')
+function openFormatsDialog(mode) {
+  buildFormatEditor();
+  const isNew = mode === 'new';
+  $('formatsTitle').textContent = isNew ? 'New project' : 'Edit formats';
+  $('formatsIntro').style.display = isNew ? '' : 'none';
+  $('setupNameRow').style.display = isNew ? '' : 'none';
+  $('setupFoot').style.display = isNew ? '' : 'none';
+  $('editFoot').style.display = isNew ? 'none' : '';
+  if (isNew) $('setupName').value = '';
+  $('formatsDlg').classList.add('on');
+  if (isNew) setTimeout(() => $('setupName').focus(), 30);
+}
+function closeFormatsDialog() { $('formatsDlg').classList.remove('on'); }
+$('editFormats').addEventListener('click', () => openFormatsDialog('edit'));
+$('formatsClose').addEventListener('click', closeFormatsDialog);
+$('fmtDone').addEventListener('click', closeFormatsDialog);
+$('formatsDlg').addEventListener('click', (e) => { if (e.target === $('formatsDlg')) closeFormatsDialog(); });
+// i "new" mode: navnet gemmes og slides vælges herfra
+$('fmtChooseFolder').addEventListener('click', () => { S.pendingName = $('setupName').value.trim() || null; $('dirPick').click(); });
+$('fmtImportFiles').addEventListener('click', () => { S.pendingName = $('setupName').value.trim() || null; $('filePick').click(); });
 
 /* ------------------- fullscreen-viewer med navigation ---------------------- */
 // Åbnes med ⛶ på et kort eller ved klik på et preview. Viser enheden (slide-del)
@@ -2346,8 +2386,8 @@ function buildStartRecent(recents) {
   }
 }
 $('startOpen').addEventListener('click', () => { if (startSel) { hideStart(); openRecent(startSel); } });
-// New project / Import = brugeren vælger selv sine slides (ingen auto-scan af PC'en)
-$('startNew').addEventListener('click', () => $('dirPick').click());
+// New project = opsætnings-vindue (formater) → derefter vælg slides
+$('startNew').addEventListener('click', () => openFormatsDialog('new'));
 $('startImport').addEventListener('click', () => $('filePick').click());
 $('startOpenFile').addEventListener('click', () => $('projFilePick').click());
 $('miStart').addEventListener('click', () => { closeFileMenu(); showStart(); });
