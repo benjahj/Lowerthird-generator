@@ -521,11 +521,35 @@ details.adv summary:hover { color: var(--dim); }
 
 .card.off .mon { opacity: 0.3; }
 
-.ctrls .skip {
+.ctrls .skip, .light-ctrls .skip {
   background: transparent; border: 1px solid var(--line2); color: var(--faint);
   border-radius: 4px; font-size: 11px; padding: 3px 8px; cursor: pointer; flex: none;
 }
-.ctrls .skip:hover { color: var(--red); border-color: var(--red); }
+.ctrls .skip:hover, .light-ctrls .skip:hover { color: var(--red); border-color: var(--red); }
+
+/* farvevælger til tekstfarve (kort + viewer) */
+.colpick {
+  width: 34px; height: 26px; padding: 1px; flex: none;
+  background: var(--bg); border: 1px solid var(--line2);
+  border-radius: 5px; cursor: pointer;
+}
+.colpick:hover { border-color: var(--faint); }
+
+/* kontroller inde i fullscreen-vieweren */
+.light-ctrls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-top: 2px;
+  cursor: default;
+}
+.light-ctrls select { width: auto; font-size: 12px; padding: 4px 6px; }
+.light-ctrls .sl { display: flex; align-items: center; gap: 8px; width: 220px; }
+.light-ctrls .sl span { font-family: var(--mono); font-size: 10.5px; color: var(--faint); flex: none; }
 
 /* ---------- Diverse ---------- */
 

@@ -167,9 +167,38 @@ async function loadFiles(fileList) {
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
   if (!files.length) { toast('No image files found in what you dropped.', true); return; }
   const slides = files.map((f) => ({ name: f.name, src: { file: f }, ov: { mode: 'auto', off: 0, on: true, img: true } }));
-  S.deckName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : 'My images';
+  const batchName = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/')[0] : 'My images';
+  if (S.slides.length) {
+    // import i flere omgange: nye billeder LÆGGES TIL det eksisterende sæt
+    S.deckName = S.deckName + ' + ' + batchName;
+    S.deckKey = null; // blandet sæt — per-mappe hukommelse gælder ikke
+    await ingest([...S.slides, ...slides]);
+  } else {
+    S.deckName = batchName;
+    S.deckKey = null;
+    await ingest(slides);
+  }
+}
+
+// ryd alle indlæste slides (så man kan starte forfra eller skifte sæt)
+function clearDeck() {
+  S.renderToken++; // afbryd evt. igangværende analyse/render
+  renderQueue.length = 0;
+  for (const b of bmpCache.values()) { try { b.bmp.close(); } catch { /* i brug */ } }
+  bmpCache.clear();
+  S.slides = [];
+  S.deckName = '';
   S.deckKey = null;
-  await ingest(slides);
+  S.analyzed = false;
+  S.manualFrame = false;
+  S.cardSig = null;
+  S.totalParts = 0;
+  $('exportDir').disabled = true;
+  $('exportZip').disabled = true;
+  document.querySelectorAll('.folder-item').forEach((x) => x.classList.remove('on'));
+  try { localStorage.removeItem('ltfabrik.lastFolder'); } catch { /* ignorér */ }
+  buildCards(null);
+  setStatus('ready — pick a folder', false, null);
 }
 
 async function ingest(slides, savedFrame) {
@@ -580,6 +609,7 @@ function getSettings() {
   }
   return {
     formats,
+    textColor: $('textColorMode').value === 'custom' ? $('textColor').value : null,
     charLimit: Math.min(400, Math.max(40, +$('charLimit').value || 200)),
     pad: Math.max(0, +$('pad').value || 0),
     format: $('format').value,
@@ -1046,6 +1076,31 @@ function chooseRows(sl, s, mode, geoms, subset) {
 
 /* --------------------------------- rendering -------------------------------- */
 
+// Genfarvning af tekst: ordets udklip laves om til en farvet silhuet, hvor
+// afstanden fra slidens baggrundsfarve bliver alfakanal (bevarer antialiasing).
+// Chips/labels (nedskalerede ord, k<1) beholder originalfarven.
+let tintCvs = null, tintCtx = null;
+
+function tintWord(bmp, sx, sy, sw, sh, bg, color) {
+  const w = Math.max(1, Math.round(sw)), h = Math.max(1, Math.round(sh));
+  if (!tintCvs || tintCvs.width < w || tintCvs.height < h) {
+    tintCvs = new OffscreenCanvas(Math.max(w, tintCvs ? tintCvs.width : 1), Math.max(h, tintCvs ? tintCvs.height : 1));
+    tintCtx = tintCvs.getContext('2d', { willReadFrequently: true });
+  }
+  tintCtx.clearRect(0, 0, w, h);
+  tintCtx.drawImage(bmp, sx, sy, sw, sh, 0, 0, w, h);
+  const im = tintCtx.getImageData(0, 0, w, h);
+  const d = im.data;
+  const r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
+  for (let i = 0; i < d.length; i += 4) {
+    const dist = Math.abs(d[i] - bg[0]) + Math.abs(d[i + 1] - bg[1]) + Math.abs(d[i + 2] - bg[2]);
+    const a2 = Math.max(0, Math.min(1, (dist - 45) / 90));
+    d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = Math.round(a2 * 255);
+  }
+  tintCtx.putImageData(im, 0, 0);
+  return { cvs: tintCvs, w, h };
+}
+
 async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
   const bmp = await getBitmap(sl);
   const a = sl.ana;
@@ -1122,6 +1177,8 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
       if (boxW > 5 && boxH > 5) {
         // aldrig mere end maxScale × kildens native opløsning
         const scale = Math.min(scaleFor(m, boxW, boxH), s.maxScale);
+        // valgt tekstfarve: pr. slide, ellers global, ellers original
+        const effColor = sl.ov.color || s.textColor || null;
         const totH = m.totH * scale;
         let y = g.box.y0 + (boxH - totH) / 2 + (sl.ov.off / 100) * (boxH - totH) / 2;
         for (const row of rows) {
@@ -1143,8 +1200,14 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
             const rawW = wd.f.x1 - wd.f.x0, rawH = wd.f.y1 - wd.f.y0;
             const ks = wd.k * scale;
             const dyPos = baseline - wd.above * scale - p * ks;
-            ctx.drawImage(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p,
-              x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
+            if (effColor && wd.k === 1) {
+              const t = tintWord(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p, a.bg, effColor);
+              ctx.drawImage(t.cvs, 0, 0, t.w, t.h,
+                x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
+            } else {
+              ctx.drawImage(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p,
+                x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
+            }
             x += wd.w * scale;
           });
           y = baseline + below * scale + wctx.rowGap * scale;
@@ -1297,8 +1360,10 @@ function buildCards(counts) {
         <option value="crop">Crop</option>
       </select>
       <div class="sl"><span>vertical</span><input type="range" min="-100" max="100" value="0"></div>
+      <input type="color" class="colpick" title="Text color for this slide">
+      <button class="skip colreset" title="Back to default color" style="display:none">↺</button>
       <button class="skip imgbtn" style="display:none"></button>
-      <button class="skip">exclude</button>`;
+      <button class="skip exbtn">exclude</button>`;
     const sel = ctrls.querySelector('select');
     sel.value = sl.ov.mode;
     sel.addEventListener('change', () => { sl.ov.mode = sel.value; saveDeckState(); renderAllSoon(); });
@@ -1316,10 +1381,27 @@ function buildCards(counts) {
       saveDeckState();
       renderOne(sl);
     });
-    ctrls.querySelector('.skip:not(.imgbtn)').addEventListener('click', () => {
+    // tekstfarve pr. slide — ↺ går tilbage til standard (original/global)
+    const col = ctrls.querySelector('.colpick');
+    const colReset = ctrls.querySelector('.colreset');
+    col.value = sl.ov.color || '#ffffff';
+    colReset.style.display = sl.ov.color ? '' : 'none';
+    col.addEventListener('input', debounce(() => {
+      sl.ov.color = col.value;
+      colReset.style.display = '';
+      saveDeckState();
+      renderOne(sl);
+    }, 120));
+    colReset.addEventListener('click', () => {
+      sl.ov.color = null;
+      colReset.style.display = 'none';
+      saveDeckState();
+      renderOne(sl);
+    });
+    ctrls.querySelector('.exbtn').addEventListener('click', () => {
       sl.ov.on = !sl.ov.on;
       sl._cards.forEach((c) => c.classList.toggle('off', !sl.ov.on));
-      ctrls.querySelector('.skip:not(.imgbtn)').textContent = sl.ov.on ? 'exclude' : 'include';
+      ctrls.querySelector('.exbtn').textContent = sl.ov.on ? 'exclude' : 'include';
       saveDeckState();
     });
     sl._ctrls = ctrls;
@@ -1537,7 +1619,8 @@ async function exportZip() {
 /* ---------------------------------- events --------------------------------- */
 
 const SETTING_IDS = ['outW', 'outH', 'outW2', 'outH2', 'suffixA', 'suffixB', 'fmtBOn', 'canvasA', 'canvasB',
-  'pad', 'format', 'layoutMode', 'alignH', 'maxScale', 'charLimit', 'bgMode', 'sidebarMode', 'furnitureMode'];
+  'pad', 'format', 'layoutMode', 'alignH', 'maxScale', 'charLimit', 'bgMode', 'sidebarMode', 'furnitureMode',
+  'textColorMode', 'textColor'];
 const NO_RENDER = new Set(['suffixA', 'suffixB', 'format']); // bruges først ved eksport
 const ON_COMMIT = new Set(['outW', 'outH', 'outW2', 'outH2', 'pad', 'charLimit']); // tal: render ved Enter/blur
 
@@ -1562,12 +1645,14 @@ function restoreSettings() {
   }
   syncChips();
   $('fmtBRow').style.opacity = $('fmtBOn').checked ? '1' : '0.4';
+  $('textColorRow').style.display = $('textColorMode').value === 'custom' ? '' : 'none';
 }
 
 for (const id of SETTING_IDS) {
   $(id).addEventListener(ON_COMMIT.has(id) ? 'change' : 'input', () => {
     if (id === 'outW' || id === 'outH') syncChips();
     if (id === 'fmtBOn') $('fmtBRow').style.opacity = $('fmtBOn').checked ? '1' : '0.4';
+    if (id === 'textColorMode') $('textColorRow').style.display = $('textColorMode').value === 'custom' ? '' : 'none';
     saveSettings();
     if (!NO_RENDER.has(id)) renderAllSoon();
   });
@@ -1621,6 +1706,31 @@ async function showUnit(idx) {
     `${viewIdx + 1}/${viewUnits.length} · ${sl.name}${partLbl} · ` +
     s.formats.map(dimStr).join(' + ') +
     ' · ← → navigate · Esc close';
+  syncViewerCtrls(sl);
+}
+
+// hold viewer-kontrollerne og kort-kontrollerne i takt med sl.ov
+function syncCardCtrls(sl) {
+  const c = sl._ctrls;
+  if (!c) return;
+  c.querySelector('select').value = sl.ov.mode;
+  c.querySelector('input[type=range]').value = sl.ov.off;
+  c.querySelector('.colpick').value = sl.ov.color || '#ffffff';
+  c.querySelector('.colreset').style.display = sl.ov.color ? '' : 'none';
+  c.querySelector('.imgbtn').textContent = sl.ov.img === false ? 'image: off' : 'image: on';
+  c.querySelector('.exbtn').textContent = sl.ov.on ? 'exclude' : 'include';
+  sl._cards.forEach((cd) => cd.classList.toggle('off', !sl.ov.on));
+}
+
+function syncViewerCtrls(sl) {
+  $('lvMode').value = sl.ov.mode;
+  $('lvOff').value = sl.ov.off;
+  $('lvColor').value = sl.ov.color || '#ffffff';
+  $('lvColorReset').style.display = sl.ov.color ? '' : 'none';
+  const hasImg = sl.ana && sl.ana.images && sl.ana.images.length && resolveMode(sl, getSettings()) !== 'crop';
+  $('lvImg').style.display = hasImg ? '' : 'none';
+  $('lvImg').textContent = sl.ov.img === false ? 'image: off' : 'image: on';
+  $('lvSkip').textContent = sl.ov.on ? 'exclude' : 'include';
 }
 
 async function openViewer(sl, pi) {
@@ -1647,13 +1757,72 @@ $('grid').addEventListener('click', (e) => {
 $('lightPrev').addEventListener('click', (e) => { e.stopPropagation(); showUnit(viewIdx - 1); });
 $('lightNext').addEventListener('click', (e) => { e.stopPropagation(); showUnit(viewIdx + 1); });
 $('lightClose').addEventListener('click', (e) => { e.stopPropagation(); closeViewer(); });
-$('lightbox').addEventListener('click', (e) => { if (!e.target.closest('.light-btn')) closeViewer(); });
+$('lightbox').addEventListener('click', (e) => {
+  if (!e.target.closest('.light-btn') && !e.target.closest('#lightCtrls')) closeViewer();
+});
 document.addEventListener('keydown', (e) => {
   if (!viewerOpen()) return;
+  // piletaster i kontrollerne (fx skyderen) må ikke også bladre
+  const inCtrls = e.target && e.target.closest && e.target.closest('#lightCtrls');
   if (e.key === 'Escape') closeViewer();
-  else if (e.key === 'ArrowLeft') showUnit(viewIdx - 1);
-  else if (e.key === 'ArrowRight') showUnit(viewIdx + 1);
+  else if (e.key === 'ArrowLeft' && !inCtrls) showUnit(viewIdx - 1);
+  else if (e.key === 'ArrowRight' && !inCtrls) showUnit(viewIdx + 1);
 });
+
+// per-slide justeringer direkte i vieweren
+const lvUnit = () => viewUnits[viewIdx] || {};
+
+$('lvMode').addEventListener('change', async () => {
+  const { sl, pi } = lvUnit();
+  if (!sl) return;
+  sl.ov.mode = $('lvMode').value;
+  saveDeckState();
+  syncCardCtrls(sl);
+  renderAllSoon(); // antal dele kan ændre sig → kort genopbygges
+  viewUnits = buildViewUnits(getSettings());
+  let idx = viewUnits.findIndex((u) => u.sl === sl && u.pi === pi);
+  if (idx < 0) idx = viewUnits.findIndex((u) => u.sl === sl);
+  await showUnit(idx < 0 ? Math.min(viewIdx, viewUnits.length - 1) : idx);
+});
+$('lvOff').addEventListener('input', debounce(async () => {
+  const { sl } = lvUnit();
+  if (!sl) return;
+  sl.ov.off = +$('lvOff').value;
+  saveDeckState(); syncCardCtrls(sl); renderOne(sl);
+  await showUnit(viewIdx);
+}, 90));
+$('lvColor').addEventListener('input', debounce(async () => {
+  const { sl } = lvUnit();
+  if (!sl) return;
+  sl.ov.color = $('lvColor').value;
+  saveDeckState(); syncCardCtrls(sl); renderOne(sl);
+  await showUnit(viewIdx);
+}, 150));
+$('lvColorReset').addEventListener('click', async () => {
+  const { sl } = lvUnit();
+  if (!sl) return;
+  sl.ov.color = null;
+  saveDeckState(); syncCardCtrls(sl); renderOne(sl);
+  await showUnit(viewIdx);
+});
+$('lvImg').addEventListener('click', async () => {
+  const { sl } = lvUnit();
+  if (!sl) return;
+  sl.ov.img = sl.ov.img === false;
+  saveDeckState(); syncCardCtrls(sl); renderOne(sl);
+  await showUnit(viewIdx);
+});
+$('lvSkip').addEventListener('click', async () => {
+  const { sl } = lvUnit();
+  if (!sl) return;
+  sl.ov.on = !sl.ov.on;
+  saveDeckState(); syncCardCtrls(sl);
+  viewUnits = buildViewUnits(getSettings());
+  if (!viewUnits.length) { closeViewer(); return; }
+  await showUnit(Math.min(viewIdx, viewUnits.length - 1));
+});
+
+$('clearDeck').addEventListener('click', clearDeck);
 // native fullscreen-Esc lukker fullscreen uden keydown — luk overlayet med
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement && viewerOpen()) $('lightbox').classList.remove('on');

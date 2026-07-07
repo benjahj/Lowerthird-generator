@@ -28,10 +28,11 @@
       </div>
       <div class="folder-list" id="folderList"></div>
       <div class="row" style="margin-top:8px">
-        <button class="ghost" id="pickFiles">Choose files…</button>
-        <button class="ghost" id="pickDir">Choose folder…</button>
+        <button class="ghost" id="pickFiles">Add files…</button>
+        <button class="ghost" id="pickDir">Add folder…</button>
+        <button class="ghost" id="clearDeck" title="Remove all loaded slides">Clear</button>
       </div>
-      <div class="drop" id="drop">…or drag images/a folder here<br>(jpg · png · webp · gif · bmp · avif)</div>
+      <div class="drop" id="drop">…or drag images/a folder here (adds to the current set)<br>(jpg · png · webp · gif · bmp · avif)</div>
       <input type="file" id="filePick" multiple accept="image/*" hidden>
       <input type="file" id="dirPick" webkitdirectory hidden>
     </section>
@@ -108,6 +109,18 @@
         <label for="charLimit">Max characters per part</label>
         <input type="number" id="charLimit" value="200" min="40" max="400" step="5" style="width:130px"
           title="Slides with more text are split into several lower thirds — never in the middle of a verse">
+      </div>
+      <div class="row">
+        <label for="textColorMode">Text color</label>
+        <select id="textColorMode" style="width:130px"
+          title="Single color repaints all text in one color — labels/chips keep their original look">
+          <option value="original" selected>Original</option>
+          <option value="custom">Single color</option>
+        </select>
+      </div>
+      <div class="row" id="textColorRow" style="display:none">
+        <label for="textColor">Color</label>
+        <input type="color" id="textColor" value="#ffffff" style="width:130px;height:30px;padding:2px">
       </div>
     </section>
 
@@ -206,6 +219,20 @@
     <canvas id="lightCanvasB"></canvas>
   </div>
   <div class="light-meta" id="lightMeta"></div>
+  <div class="light-ctrls" id="lightCtrls">
+    <select id="lvMode">
+      <option value="auto">Auto</option>
+      <option value="wrap">Rewrap</option>
+      <option value="stack">Lines</option>
+      <option value="oneline">One line</option>
+      <option value="crop">Crop</option>
+    </select>
+    <div class="sl"><span>vertical</span><input type="range" id="lvOff" min="-100" max="100" value="0"></div>
+    <input type="color" id="lvColor" class="colpick" title="Text color for this slide">
+    <button class="skip" id="lvColorReset" title="Back to default color" style="display:none">↺</button>
+    <button class="skip" id="lvImg" style="display:none"></button>
+    <button class="skip" id="lvSkip"></button>
+  </div>
 </div>
 
 <script src="app.js"></script>

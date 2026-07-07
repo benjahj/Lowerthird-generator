@@ -7,8 +7,6 @@ one as a lower third: logos and frames are kept, the text is re-laid out to fill
 the format beautifully, and long slides are split into several parts — without
 ever changing a single word. Works fully offline. Free.
 
-![LT Fabrik](docs/screenshot.png)
-
 ## Download & install
 
 **Windows**: download **LT-Fabrik-Setup-x.y.z.exe** from
@@ -59,11 +57,13 @@ and every per-slide adjustment.
 
 | Control | What it does |
 |---|---|
-| Click a preview / ⛶ | Full-screen view; ← → to flip through, Esc to close |
+| Click a preview / ⛶ | Full-screen view; ← → to flip through, Esc to close. All per-slide controls are available right in the viewer |
 | Wrapping (per slide) | Auto, rewrap words, keep original lines, one line, or crop |
 | vertical slider | Nudge the text/crop up or down (double-click resets) |
+| Text color | Repaint all text in one color — globally or per slide (labels keep their original look) |
 | image: on/off | Include or drop an embedded photo from the slide |
 | exclude | Leave a slide out of the export |
+| Clear / Add | Clear the loaded set, or add more images in several rounds |
 | Max characters per part | How much text one lower third may hold before splitting |
 
 Everything runs on your own computer — no internet needed, nothing is uploaded
