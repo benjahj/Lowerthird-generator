@@ -28,32 +28,88 @@ async function pickRoot() {
   return root;
 }
 
+const RELEASES_URL = 'https://github.com/benjahj/Lowerthird-generator/releases/latest';
+
 function setupAutoUpdate() {
   try {
+    const { shell } = require('electron');
     const { autoUpdater } = require('electron-updater');
     // spørg FØR download — brugeren vælger "Update now" eller "Remind me later"
     autoUpdater.autoDownload = false;
+    // hvis en download er hentet men brugeren valgte "Later", så installér ved næste luk
+    autoUpdater.autoInstallOnAppQuit = true;
+
     let asking = false;
+    let downloading = false;
+
+    const clearProgress = () => {
+      try { win.setProgressBar(-1); } catch { /* vinduet kan være lukket */ }
+      try { win.setTitle('LT Factory'); } catch { /* */ }
+    };
+
     autoUpdater.on('update-available', async (info) => {
-      if (asking) return;
+      if (asking || downloading) return;
       asking = true;
       const r = await dialog.showMessageBox(win, {
         type: 'question',
         title: 'Update available',
         message: `A new version of LT Factory is available (${info.version}).`,
-        detail: 'Would you like to update now? The app will restart when the download finishes.',
+        detail: 'Download it now? You can keep working — a progress bar shows the download, and the app will offer to restart when it is ready.',
         buttons: ['Update now', 'Remind me later'],
         defaultId: 0,
         cancelId: 1,
       });
       asking = false;
-      if (r.response === 0) autoUpdater.downloadUpdate().catch(() => {});
+      if (r.response !== 0) return;
+      // giv med det samme synlig feedback — download'en kan tage et øjeblik at starte
+      downloading = true;
+      try { win.setProgressBar(0.02); } catch { /* */ }
+      try { win.setTitle('LT Factory — starting download…'); } catch { /* */ }
+      // fejl håndteres i 'error'-handleren nedenfor (undgår dobbelt dialog)
+      autoUpdater.downloadUpdate().catch(() => {});
     });
-    autoUpdater.on('update-downloaded', () => autoUpdater.quitAndInstall(false, true));
-    autoUpdater.on('error', () => { /* offline etc. — appen virker fint uden net */ });
+
+    autoUpdater.on('download-progress', (p) => {
+      const pct = Math.max(0, Math.min(100, p.percent || 0));
+      try { win.setProgressBar(Math.max(0.02, pct / 100)); } catch { /* */ }
+      try { win.setTitle(`LT Factory — downloading update ${Math.round(pct)}%`); } catch { /* */ }
+    });
+
+    autoUpdater.on('update-downloaded', async (info) => {
+      downloading = false;
+      clearProgress();
+      const r = await dialog.showMessageBox(win, {
+        type: 'question',
+        title: 'Update ready',
+        message: `LT Factory ${info && info.version ? info.version + ' ' : ''}is ready to install.`,
+        detail: 'The app needs to restart to finish. If you choose Later, it will install automatically next time you close LT Factory.',
+        buttons: ['Restart now', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (r.response === 0) autoUpdater.quitAndInstall(false, true);
+    });
+
+    autoUpdater.on('error', async (err) => {
+      // stille, hvis vi kun tjekkede (offline osv.) — appen virker fint uden net
+      if (!downloading) return;
+      downloading = false;
+      clearProgress();
+      const r = await dialog.showMessageBox(win, {
+        type: 'error',
+        title: 'Update failed',
+        message: 'The update could not be downloaded.',
+        detail: String((err && err.message) || err) + '\n\nYou can download the latest version manually instead.',
+        buttons: ['Open downloads page', 'Close'],
+        defaultId: 0,
+        cancelId: 1,
+      });
+      if (r.response === 0) shell.openExternal(RELEASES_URL).catch(() => {});
+    });
+
     autoUpdater.checkForUpdates().catch(() => {});
-    // mind om det igen senere, hvis programmet står åbent længe
-    setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 3600 * 1000);
+    // mind om det igen senere, hvis programmet står åbent længe (ikke midt i en download)
+    setInterval(() => { if (!downloading) autoUpdater.checkForUpdates().catch(() => {}); }, 4 * 3600 * 1000);
   } catch { /* updater ikke tilgængelig i dev-kørsel */ }
 }
 
