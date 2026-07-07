@@ -33,6 +33,10 @@ the app to Applications. On first launch, open Terminal and run
 The app remembers everything between sessions: your settings, your last folder,
 and every per-slide adjustment.
 
+**Projects**: save your work under a name (Save / Save as… in the left panel)
+and reopen it later from the recent-projects list. If you close the app with
+unsaved changes, it asks whether to save first.
+
 ## What it does for you
 
 - **Two formats at once** — e.g. 1920×216 for your stream and 936×208 for an

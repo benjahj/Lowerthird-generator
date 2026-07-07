@@ -77,6 +77,31 @@ app.whenReady().then(async () => {
   });
   win.loadURL('http://127.0.0.1:' + port + '/');
 
+  // usavede projekt-ændringer: spørg før lukning
+  let closing = false;
+  win.on('close', async (e) => {
+    if (closing) return;
+    e.preventDefault();
+    let dirty = false;
+    try { dirty = await win.webContents.executeJavaScript('!!(window.__ltDirty && window.__ltDirty())'); } catch { /* side ikke klar */ }
+    if (!dirty) { closing = true; win.close(); return; }
+    const r = await dialog.showMessageBox(win, {
+      type: 'question',
+      title: 'Save project?',
+      message: 'You have unsaved project changes.',
+      detail: 'Do you want to save this project before closing?',
+      buttons: ['Save', "Don't save", 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+    });
+    if (r.response === 2) return;
+    if (r.response === 0) {
+      try { await win.webContents.executeJavaScript('window.__ltQuickSave && window.__ltQuickSave()'); } catch { /* */ }
+    }
+    closing = true;
+    win.close();
+  });
+
   if (process.env.LT_TEST === '1') {
     // røgtest: bekræft at serveren svarer, og luk
     const http = require('http');

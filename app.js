@@ -111,24 +111,32 @@ async function loadServerFolders() {
       b.dataset.dir = f.dir;
       list.appendChild(b);
     }
-    // genoptag sidste session: åbn automatisk den senest brugte mappe
+    // genoptag sidste session: senest åbne projekt, ellers senest brugte mappe
     if (!S.slides.length) {
-      let last = null;
-      try { last = localStorage.getItem('ltfabrik.lastFolder'); } catch { /* ignorér */ }
-      const btn = last && list.querySelector(`.folder-item[data-dir="${CSS.escape(last)}"]`);
-      if (btn) btn.click();
+      let lastProj = null, last = null;
+      try {
+        lastProj = localStorage.getItem('ltfabrik.lastProject');
+        last = localStorage.getItem('ltfabrik.lastFolder');
+      } catch { /* ignorér */ }
+      if (lastProj && listProjects().some((p) => p.name === lastProj)) {
+        await openProject(lastProj);
+      } else if (last && list.querySelector(`.folder-item[data-dir="${CSS.escape(last)}"]`)) {
+        await loadServerFolder(last);
+        S.dirty = false; // gendannet tilstand = udgangspunkt, ikke en ændring
+        updateProjectUI();
+      }
     }
   } catch {
     $('folderList').innerHTML = '<div class="hint">Could not load the folder list. Drag images in below instead.</div>';
   }
 }
 
-async function loadServerFolder(dir) {
+async function loadServerFolder(dir, override) {
   const res = await fetch('/api/files?dir=' + encodeURIComponent(dir));
   const files = res.ok ? await res.json() : null;
   if (!Array.isArray(files) || !files.length) {
     toast('The folder could not be read — has it been moved or deleted?', true);
-    return;
+    return false;
   }
   const slides = files.map((name) => ({
     name,
@@ -138,9 +146,12 @@ async function loadServerFolder(dir) {
   S.deckName = dir.split('/').pop();
   S.deckKey = dir;
   try { localStorage.setItem('ltfabrik.lastFolder', dir); } catch { /* privat browsing */ }
-  // genopret per-slide justeringer og evt. manuel ramme fra sidste session
-  let saved = null;
-  try { saved = JSON.parse(localStorage.getItem('ltfabrik.deck.' + dir)); } catch { /* ignorér */ }
+  document.querySelectorAll('.folder-item').forEach((x) => x.classList.toggle('on', x.dataset.dir === dir));
+  // per-slide justeringer: fra projektet (override) eller sidste session
+  let saved = override || null;
+  if (!saved) {
+    try { saved = JSON.parse(localStorage.getItem('ltfabrik.deck.' + dir)); } catch { /* ignorér */ }
+  }
   if (saved && saved.ov) {
     for (const sl of slides) {
       const o = saved.ov[sl.name];
@@ -148,10 +159,95 @@ async function loadServerFolder(dir) {
     }
   }
   await ingest(slides, saved && saved.frame ? saved.frame : null);
+  return true;
+}
+
+/* --------------------------------- projekter -------------------------------- */
+// Et projekt = deck-mappe + alle indstillinger + per-slide justeringer,
+// gemt under navn i localStorage. Usaved ændringer markeres og der spørges
+// ved lukning.
+
+function listProjects() {
+  try { return JSON.parse(localStorage.getItem('ltfabrik.projects')) || []; } catch { return []; }
+}
+function storeProjects(list) {
+  try { localStorage.setItem('ltfabrik.projects', JSON.stringify(list.slice(0, 20))); } catch { /* fuld */ }
+}
+
+function markDirty() {
+  if (!S.dirty) { S.dirty = true; updateProjectUI(); }
+}
+
+function updateProjectUI() {
+  const el = $('projName');
+  el.textContent = (S.dirty && S.slides.length ? '● ' : '') + (S.projectName || 'No project');
+  el.classList.toggle('none', !S.projectName);
+  const list = $('projList');
+  list.innerHTML = '';
+  for (const p of listProjects().slice(0, 8)) {
+    const b = document.createElement('button');
+    b.className = 'folder-item' + (p.name === S.projectName ? ' on' : '');
+    b.innerHTML = '<span class="nm"></span><span class="cnt"></span><button class="del" title="Delete project">✕</button>';
+    b.querySelector('.nm').textContent = p.name;
+    b.querySelector('.cnt').textContent = new Date(p.savedAt).toLocaleDateString();
+    b.addEventListener('click', (e) => {
+      if (e.target.closest('.del')) return;
+      openProject(p.name);
+    });
+    b.querySelector('.del').addEventListener('click', () => {
+      storeProjects(listProjects().filter((x) => x.name !== p.name));
+      if (S.projectName === p.name) { S.projectName = null; try { localStorage.removeItem('ltfabrik.lastProject'); } catch { /* */ } }
+      updateProjectUI();
+    });
+    list.appendChild(b);
+  }
+}
+
+function autoProjectName() {
+  return `${S.deckName || 'Untitled'} — ${new Date().toLocaleDateString()}`;
+}
+
+function saveProject(name) {
+  if (!S.deckKey) {
+    toast('Projects need a folder-based deck (drag-and-drop sets cannot be reopened).', true);
+    return false;
+  }
+  const ov = {};
+  for (const sl of S.slides) ov[sl.name] = sl.ov;
+  const proj = {
+    name,
+    savedAt: Date.now(),
+    deckKey: S.deckKey,
+    settings: snapshotSettings(),
+    frame: S.manualFrame ? S.frame : null,
+    ov,
+  };
+  storeProjects([proj, ...listProjects().filter((p) => p.name !== name)]);
+  S.projectName = name;
+  S.dirty = false;
+  try { localStorage.setItem('ltfabrik.lastProject', name); } catch { /* */ }
+  updateProjectUI();
+  toast(`Project "${name}" saved.`);
+  return true;
+}
+
+async function openProject(name) {
+  const proj = listProjects().find((p) => p.name === name);
+  if (!proj) { toast('Project not found.', true); return; }
+  applySettings(proj.settings);
+  saveSettings();
+  const ok = await loadServerFolder(proj.deckKey, { ov: proj.ov, frame: proj.frame });
+  if (!ok) return;
+  S.projectName = name;
+  S.dirty = false;
+  try { localStorage.setItem('ltfabrik.lastProject', name); } catch { /* */ }
+  storeProjects([proj, ...listProjects().filter((p) => p.name !== name)]); // seneste øverst
+  updateProjectUI();
 }
 
 // gemmer per-slide justeringer + manuel ramme pr. mappe (til næste session)
 const saveDeckState = debounce(() => {
+  markDirty();
   if (!S.deckKey) return; // trukket-ind filer har ingen stabil nøgle
   const ov = {};
   for (const sl of S.slides) ov[sl.name] = sl.ov;
@@ -196,7 +292,13 @@ function clearDeck() {
   $('exportDir').disabled = true;
   $('exportZip').disabled = true;
   document.querySelectorAll('.folder-item').forEach((x) => x.classList.remove('on'));
-  try { localStorage.removeItem('ltfabrik.lastFolder'); } catch { /* ignorér */ }
+  try {
+    localStorage.removeItem('ltfabrik.lastFolder');
+    localStorage.removeItem('ltfabrik.lastProject');
+  } catch { /* ignorér */ }
+  S.projectName = null;
+  S.dirty = false;
+  updateProjectUI();
   buildCards(null);
   setStatus('ready — pick a folder', false, null);
 }
@@ -1630,14 +1732,12 @@ function syncChips() {
 }
 
 // indstillinger huskes mellem sessioner
-function saveSettings() {
+function snapshotSettings() {
   const o = {};
   for (const id of SETTING_IDS) o[id] = id === 'fmtBOn' ? $(id).checked : $(id).value;
-  try { localStorage.setItem('ltfabrik.settings.v1', JSON.stringify(o)); } catch { /* privat browsing */ }
+  return o;
 }
-function restoreSettings() {
-  let o = null;
-  try { o = JSON.parse(localStorage.getItem('ltfabrik.settings.v1')); } catch { /* ignorér */ }
+function applySettings(o) {
   if (!o) return;
   for (const id of SETTING_IDS) {
     if (!(id in o)) continue;
@@ -1647,6 +1747,14 @@ function restoreSettings() {
   $('fmtBRow').style.opacity = $('fmtBOn').checked ? '1' : '0.4';
   $('textColorRow').style.display = $('textColorMode').value === 'custom' ? '' : 'none';
 }
+function saveSettings() {
+  try { localStorage.setItem('ltfabrik.settings.v1', JSON.stringify(snapshotSettings())); } catch { /* privat browsing */ }
+}
+function restoreSettings() {
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem('ltfabrik.settings.v1')); } catch { /* ignorér */ }
+  applySettings(o);
+}
 
 for (const id of SETTING_IDS) {
   $(id).addEventListener(ON_COMMIT.has(id) ? 'change' : 'input', () => {
@@ -1654,6 +1762,7 @@ for (const id of SETTING_IDS) {
     if (id === 'fmtBOn') $('fmtBRow').style.opacity = $('fmtBOn').checked ? '1' : '0.4';
     if (id === 'textColorMode') $('textColorRow').style.display = $('textColorMode').value === 'custom' ? '' : 'none';
     saveSettings();
+    markDirty();
     if (!NO_RENDER.has(id)) renderAllSoon();
   });
 }
@@ -1664,6 +1773,7 @@ document.querySelectorAll('#presets .chip').forEach((c) => {
     $('outH').value = c.dataset.h;
     syncChips();
     saveSettings();
+    markDirty();
     renderAllSoon();
   });
 });
@@ -1823,6 +1933,40 @@ $('lvSkip').addEventListener('click', async () => {
 });
 
 $('clearDeck').addEventListener('click', clearDeck);
+
+// projekt-knapper
+$('projSave').addEventListener('click', () => {
+  if (S.projectName) saveProject(S.projectName);
+  else { $('projNameRow').style.display = ''; $('projNameInput').value = autoProjectName(); $('projNameInput').focus(); }
+});
+$('projSaveAs').addEventListener('click', () => {
+  $('projNameRow').style.display = '';
+  $('projNameInput').value = S.projectName || autoProjectName();
+  $('projNameInput').focus();
+  $('projNameInput').select();
+});
+function commitProjectName() {
+  const name = $('projNameInput').value.trim();
+  if (!name) return;
+  if (saveProject(name)) $('projNameRow').style.display = 'none';
+}
+$('projNameOk').addEventListener('click', commitProjectName);
+$('projNameInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') commitProjectName();
+  if (e.key === 'Escape') $('projNameRow').style.display = 'none';
+});
+
+// advarsel ved lukning med usavede ændringer.
+// I Electron håndteres det af en pæn dialog i main-processen; i browseren
+// bruges standard-advarslen.
+const IS_ELECTRON = navigator.userAgent.includes('Electron');
+window.__ltDirty = () => !!(S.dirty && S.slides.length);
+window.__ltQuickSave = () => saveProject(S.projectName || autoProjectName());
+if (!IS_ELECTRON) {
+  window.addEventListener('beforeunload', (e) => {
+    if (window.__ltDirty()) { e.preventDefault(); e.returnValue = ''; }
+  });
+}
 // native fullscreen-Esc lukker fullscreen uden keydown — luk overlayet med
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement && viewerOpen()) $('lightbox').classList.remove('on');
@@ -1891,5 +2035,6 @@ drop.addEventListener('drop', async (e) => {
 window.__lt = { S, loadServerFolder, renderAll, getSettings, resolveMode, geomFor, chooseRows, partsOf, layoutFor, slideBlob, drawSlide, zipWriter };
 
 restoreSettings();
+updateProjectUI();
 loadServerFolders();
 setStatus('ready — pick a folder', false, null);

@@ -22,6 +22,20 @@
   <aside class="panel">
 
     <section class="sect">
+      <h2>PROJECT</h2>
+      <div class="row"><span class="proj-name" id="projName">No project</span></div>
+      <div class="row">
+        <button class="ghost" id="projSave">Save</button>
+        <button class="ghost" id="projSaveAs">Save as…</button>
+      </div>
+      <div class="row" id="projNameRow" style="display:none">
+        <input type="text" id="projNameInput" placeholder="Project name…">
+        <button class="ghost" id="projNameOk" style="width:auto">OK</button>
+      </div>
+      <div class="folder-list" id="projList"></div>
+    </section>
+
+    <section class="sect">
       <h2>SOURCE</h2>
       <div class="row" id="rootRow" style="display:none">
         <button class="ghost" id="pickRoot">Change folder location…</button>
