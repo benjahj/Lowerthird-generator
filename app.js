@@ -569,13 +569,14 @@ function getSettings() {
     W: Math.max(64, +$('outW').value || 1920),
     H: Math.max(32, +$('outH').value || 216),
     suffix: $('suffixA').value || '_stream',
+    canvas: $('canvasA').value || 'strip',
   }];
   if ($('fmtBOn').checked) {
     let suffix = $('suffixB').value || '_led';
     const W = Math.max(64, +$('outW2').value || 936);
     const H = Math.max(32, +$('outH2').value || 208);
     if (suffix === formats[0].suffix) suffix += `_${W}x${H}`;
-    formats.push({ key: 'b', W, H, suffix });
+    formats.push({ key: 'b', W, H, suffix, canvas: $('canvasB').value || 'strip' });
   }
   return {
     formats,
@@ -1222,6 +1223,30 @@ const cardObserver = new IntersectionObserver((entries) => {
   }
 }, { rootMargin: '600px' });
 
+/* ----------------------- 16:9-canvas med transparens ----------------------- */
+// Ved canvas-tilstand lægges strippen på en gennemsigtig 16:9-flade
+// (fx 1920×1080) i top, midt eller bund — resten er transparent (PNG).
+
+const fullCanvasH = (fmt) => Math.round((fmt.W * 9) / 16);
+
+const dimStr = (fmt) => (fmt.canvas && fmt.canvas !== 'strip'
+  ? `${fmt.W}×${fullCanvasH(fmt)}` : `${fmt.W}×${fmt.H}`);
+
+async function renderUnit(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
+  if (!fmt.canvas || fmt.canvas === 'strip') {
+    return drawSlide(sl, s, fmt, canvas, rows, mode, pixScale);
+  }
+  const strip = new OffscreenCanvas(2, 2);
+  await drawSlide(sl, s, fmt, strip, rows, mode, pixScale);
+  const FH = fullCanvasH(fmt);
+  canvas.width = Math.max(2, Math.round(fmt.W * pixScale));
+  canvas.height = Math.max(2, Math.round(FH * pixScale));
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const y = fmt.canvas === 'top' ? 0 : fmt.canvas === 'middle' ? (FH - fmt.H) / 2 : FH - fmt.H;
+  ctx.drawImage(strip, 0, Math.round(y * pixScale));
+}
+
 /* ------------------------------ preview-kort ------------------------------- */
 
 function buildCards(counts) {
@@ -1321,17 +1346,18 @@ async function renderOne(sl) {
     const rows = L.rows[pi] || [null, null];
     try {
       // ombrydning er PR. FORMAT — stream må have færre linjer end LED
-      await drawSlide(sl, s, s.formats[0], cA, rows[0], L.mode, previewScale(s.formats[0]));
+      await renderUnit(sl, s, s.formats[0], cA, rows[0], L.mode, previewScale(s.formats[0]));
       cA._ref = { sl, pi, fi: 0 };
       if (s.formats[1]) {
         cB.style.display = '';
         cB.style.width = Math.min(100, (s.formats[1].W / s.formats[0].W) * 100) + '%';
-        await drawSlide(sl, s, s.formats[1], cB, rows[1], L.mode, previewScale(s.formats[1]));
+        await renderUnit(sl, s, s.formats[1], cB, rows[1], L.mode, previewScale(s.formats[1]));
         cB._ref = { sl, pi, fi: 1 };
       } else {
         cB.style.display = 'none';
       }
-      card.querySelector('.dims').textContent = s.formats.map((f) => `${f.W}×${f.H}`).join(' · ');
+      card.querySelector('.dims').textContent = s.formats.map(dimStr).join(' · ');
+      card.classList.add('lit'); // fade-in når kortet er tegnet
     } catch (e) {
       console.error(sl.name, e);
     }
@@ -1347,7 +1373,7 @@ async function renderAll() {
   const sig = counts.join(',');
   if (sig !== S.cardSig) { S.cardSig = sig; buildCards(counts); }
   S.totalParts = counts.reduce((a, b) => a + b, 0);
-  $('deckMeta').textContent = `${S.slides.length} slides → ${S.totalParts} lower thirds · ` + s.formats.map((f) => `${f.W}×${f.H}`).join(' + ');
+  $('deckMeta').textContent = `${S.slides.length} slides → ${S.totalParts} lower thirds · ` + s.formats.map(dimStr).join(' + ');
   // markér alle som ændrede; kun de synlige renderes nu, resten ved scroll
   renderQueue.length = 0;
   for (const sl of S.slides) {
@@ -1363,13 +1389,16 @@ const renderAllSoon = debounce(renderAll, 200);
 
 function outName(sl, s, fmt, pi, nParts) {
   const base = sl.name.replace(/\.[^.]+$/, '');
-  return base + (nParts > 1 ? `_part${pi + 1}` : '') + fmt.suffix + (s.format === 'png' ? '.png' : '.jpg');
+  const png = s.format === 'png' || (fmt.canvas && fmt.canvas !== 'strip');
+  return base + (nParts > 1 ? `_part${pi + 1}` : '') + fmt.suffix + (png ? '.png' : '.jpg');
 }
 
 async function slideBlob(sl, s, fmt, rows, mode) {
   const off = new OffscreenCanvas(fmt.W, fmt.H);
-  await drawSlide(sl, s, fmt, off, rows, mode);
-  return off.convertToBlob(s.format === 'png' ? { type: 'image/png' } : { type: 'image/jpeg', quality: 0.92 });
+  await renderUnit(sl, s, fmt, off, rows, mode);
+  // transparens kræver PNG — 16:9-canvas eksporteres altid som PNG
+  const png = s.format === 'png' || (fmt.canvas && fmt.canvas !== 'strip');
+  return off.convertToBlob(png ? { type: 'image/png' } : { type: 'image/jpeg', quality: 0.92 });
 }
 
 function exportCount(s, list) {
@@ -1507,8 +1536,8 @@ async function exportZip() {
 
 /* ---------------------------------- events --------------------------------- */
 
-const SETTING_IDS = ['outW', 'outH', 'outW2', 'outH2', 'suffixA', 'suffixB', 'fmtBOn', 'pad', 'format',
-  'layoutMode', 'alignH', 'maxScale', 'charLimit', 'bgMode', 'sidebarMode', 'furnitureMode'];
+const SETTING_IDS = ['outW', 'outH', 'outW2', 'outH2', 'suffixA', 'suffixB', 'fmtBOn', 'canvasA', 'canvasB',
+  'pad', 'format', 'layoutMode', 'alignH', 'maxScale', 'charLimit', 'bgMode', 'sidebarMode', 'furnitureMode'];
 const NO_RENDER = new Set(['suffixA', 'suffixB', 'format']); // bruges først ved eksport
 const ON_COMMIT = new Set(['outW', 'outH', 'outW2', 'outH2', 'pad', 'charLimit']); // tal: render ved Enter/blur
 
@@ -1578,19 +1607,19 @@ async function showUnit(idx) {
   const s = getSettings();
   const L = layoutFor(sl, s);
   const rows = L.rows[pi] || [null, null];
-  await drawSlide(sl, s, s.formats[0], $('lightCanvas'), rows[0], L.mode, 1);
+  await renderUnit(sl, s, s.formats[0], $('lightCanvas'), rows[0], L.mode, 1);
   const cB = $('lightCanvasB');
   if (s.formats[1]) {
     cB.style.display = '';
     cB.style.width = Math.min(100, (s.formats[1].W / s.formats[0].W) * 100) + '%';
-    await drawSlide(sl, s, s.formats[1], cB, rows[1], L.mode, 1);
+    await renderUnit(sl, s, s.formats[1], cB, rows[1], L.mode, 1);
   } else {
     cB.style.display = 'none';
   }
   const partLbl = L.parts.length > 1 ? ` · part ${pi + 1}/${L.parts.length}` : '';
   $('lightMeta').textContent =
     `${viewIdx + 1}/${viewUnits.length} · ${sl.name}${partLbl} · ` +
-    s.formats.map((f) => `${f.W}×${f.H}`).join(' + ') +
+    s.formats.map(dimStr).join(' + ') +
     ' · ← → navigate · Esc close';
 }
 

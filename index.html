@@ -49,6 +49,16 @@
         <button class="chip" data-w="1920" data-h="324">1920×324 · 30%</button>
         <button class="chip" data-w="1920" data-h="360">1920×360 · 33%</button>
       </div>
+      <div class="row" style="margin-top:10px">
+        <label for="canvasA">Canvas</label>
+        <select id="canvasA" style="width:130px"
+          title="Full 16:9 frame: the lower third is placed on a transparent 16:9 canvas (e.g. 1920×1080) — always exported as PNG">
+          <option value="strip" selected>Strip only</option>
+          <option value="top">16:9 · top</option>
+          <option value="middle">16:9 · center</option>
+          <option value="bottom">16:9 · bottom</option>
+        </select>
+      </div>
     </section>
 
     <section class="sect">
@@ -62,6 +72,16 @@
         <div class="field"><span>Width px</span><input type="number" id="outW2" value="936" min="64" step="2"></div>
         <div class="field"><span>Height px</span><input type="number" id="outH2" value="208" min="32" step="2"></div>
         <div class="field"><span>Suffix</span><input type="text" id="suffixB" value="_led"></div>
+      </div>
+      <div class="row">
+        <label for="canvasB">Canvas</label>
+        <select id="canvasB" style="width:130px"
+          title="Full 16:9 frame: the lower third is placed on a transparent 16:9 canvas — always exported as PNG">
+          <option value="strip" selected>Strip only</option>
+          <option value="top">16:9 · top</option>
+          <option value="middle">16:9 · center</option>
+          <option value="bottom">16:9 · bottom</option>
+        </select>
       </div>
       <div class="hint">Both formats always carry exactly the same text — never more or less on one of them. Line breaks and text size adapt to each format.</div>
     </section>

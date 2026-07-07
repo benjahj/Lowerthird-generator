@@ -40,6 +40,15 @@ body {
   padding: 0 16px;
   background: #0a0c0f;
   border-bottom: 1px solid var(--line);
+  position: relative;
+}
+.topbar::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 5%, rgba(240, 166, 43, 0.45), transparent 95%);
+  pointer-events: none;
 }
 
 .tally {
@@ -182,7 +191,8 @@ button.big {
   padding: 9px 12px;
   cursor: pointer;
 }
-button.big:hover { background: var(--amber-hi); }
+button.big { transition: background 130ms, box-shadow 130ms; }
+button.big:hover { background: var(--amber-hi); box-shadow: 0 0 20px rgba(240, 166, 43, 0.35); }
 button.big:disabled { background: var(--surface2); color: var(--faint); cursor: default; }
 
 button.ghost {
@@ -219,8 +229,10 @@ button.ghost:hover { color: var(--text); border-color: var(--faint); }
 }
 .folder-item:hover { border-color: var(--faint); }
 .folder-item.on { border-color: var(--amber); background: #221d12; }
+.folder-item { transition: border-color 120ms, background 120ms; }
 .folder-item .cnt { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--faint); flex: none; }
 .folder-item .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-item .nm::before { content: '▸ '; color: var(--amber); font-family: var(--mono); font-size: 10px; }
 
 .drop {
   border: 1px dashed var(--line2);
@@ -240,7 +252,14 @@ button.ghost:hover { color: var(--text); border-color: var(--faint); }
   display: flex;
   align-items: baseline;
   gap: 14px;
-  margin-bottom: 16px;
+  position: sticky;
+  top: -20px;
+  z-index: 5;
+  background: rgba(15, 18, 22, 0.85);
+  backdrop-filter: blur(10px);
+  padding: 14px 6px 12px;
+  margin: -20px -6px 14px;
+  border-bottom: 1px solid var(--line);
 }
 .deck-head h1 {
   font-family: var(--disp);
@@ -334,7 +353,8 @@ details.adv summary:hover { color: var(--dim); }
   cursor: zoom-out;
   padding: 30px;
 }
-.lightbox.on { display: flex; }
+.lightbox.on { display: flex; animation: lbIn 180ms ease-out; }
+@keyframes lbIn { from { opacity: 0; } to { opacity: 1; } }
 .light-stack {
   display: flex;
   flex-direction: column;
@@ -350,6 +370,8 @@ details.adv summary:hover { color: var(--dim); }
   max-height: 38vh;
   object-fit: contain;
   box-shadow: 0 12px 60px rgba(0, 0, 0, 0.7);
+  /* skaktern viser hvad der er transparent ved 16:9-canvas */
+  background: repeating-conic-gradient(#14171c 0% 25%, #1b2027 0% 50%) 0 0 / 22px 22px;
 }
 .light-meta { font-family: var(--mono); font-size: 12px; color: var(--dim); }
 
@@ -392,7 +414,13 @@ details.adv summary:hover { color: var(--dim); }
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
+  /* kort toner blødt frem, efterhånden som de renderes */
+  opacity: 0.22;
+  transform: translateY(5px);
+  transition: opacity 320ms ease-out, transform 320ms ease-out, border-color 140ms;
 }
+.card.lit { opacity: 1; transform: none; }
+.group:hover .card { border-color: var(--line2); }
 
 .card .mon {
   position: relative;
@@ -419,7 +447,8 @@ details.adv summary:hover { color: var(--dim); }
   display: block;
   width: 100%;
   height: auto;
-  background: #000;
+  /* transparent: skaktern-baggrunden fra .mon skinner igennem ved 16:9-canvas */
+  background: transparent;
   box-shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
   cursor: zoom-in;
   transition: box-shadow 120ms;
@@ -522,6 +551,13 @@ details.adv summary:hover { color: var(--dim); }
 .toast.on { opacity: 1; }
 .toast.err { border-left-color: var(--red); }
 
+/* scrollbars i kontrolrums-stil */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 5px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+  .card { opacity: 1; transform: none; }
 }
