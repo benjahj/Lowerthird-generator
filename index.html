@@ -8,13 +8,21 @@
 </head>
 <body>
 
+<!-- ============================ TOP BAR ============================ -->
 <header class="topbar">
-  <div class="tally" id="tally"></div>
-  <div class="brand">LT<em>·</em>FACTORY</div>
+  <div class="brandmark">
+    <svg viewBox="0 0 26 26" width="20" height="20" aria-hidden="true">
+      <rect x="1.5" y="1.5" width="23" height="23" rx="4" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.5"/>
+      <rect x="5" y="15" width="16" height="4.2" rx="1.4" fill="var(--amber)"/>
+      <rect x="5" y="20" width="9" height="2.4" rx="1" fill="currentColor" opacity="0.55"/>
+    </svg>
+    <span class="wordmark">LT&thinsp;FACTORY</span>
+  </div>
+
   <div class="menu" id="fileMenu">
-    <button class="menu-btn" id="fileBtn">File <span>▾</span></button>
+    <button class="menu-btn" id="fileBtn">File</button>
     <div class="menu-drop" id="fileDrop">
-      <button class="mi" id="miSave">Save <span class="kbd">Ctrl+S</span></button>
+      <button class="mi" id="miSave">Save <span class="kbd">Ctrl S</span></button>
       <button class="mi" id="miSaveAs">Save as…</button>
       <div class="mi-sep"></div>
       <div class="mi-head">Recent projects</div>
@@ -22,217 +30,273 @@
       <div class="mi-sep"></div>
       <button class="mi" id="miImportFiles">Import files…</button>
       <button class="mi" id="miImportFolder">Import folder…</button>
+      <button class="mi" id="miStart">Start screen</button>
       <button class="mi" id="miClear">Clear all</button>
       <div class="mi-sep"></div>
-      <button class="mi" id="miPrefs">Preferences… <span class="kbd">Ctrl+,</span></button>
+      <button class="mi" id="miPrefs">Preferences… <span class="kbd">Ctrl ,</span></button>
     </div>
   </div>
+
   <span class="proj-name none" id="projName"></span>
-  <div class="top-status">
-    <span id="statusText">ready</span>
+
+  <div class="top-right">
+    <div class="status"><span class="tally" id="tally"></span><span id="statusText">ready</span></div>
     <div class="progress" id="progress"><div></div></div>
+    <div class="menu" id="exportMenu">
+      <button class="btn-primary" id="exportBtn" disabled>Export</button>
+      <div class="menu-drop right" id="exportDrop">
+        <button class="mi" id="exportDir" disabled>Save to folder…</button>
+        <button class="mi" id="exportZip" disabled>Download ZIP</button>
+        <div class="mi-hint" id="exportHint"></div>
+      </div>
+    </div>
   </div>
 </header>
 
-<div class="app">
-  <aside class="panel">
+<!-- ============================ RIBBON ============================ -->
+<nav class="ribbon-tabs" id="ribbonTabs">
+  <button class="rtab on" data-tab="output">Output</button>
+  <button class="rtab" data-tab="text">Text</button>
+  <button class="rtab" data-tab="frame">Frame</button>
+  <button class="ribbon-toggle" id="ribbonToggle" title="Collapse/expand settings">▾</button>
+</nav>
 
-    <section class="sect">
-      <h2>SOURCE</h2>
-      <div class="row" id="rootRow" style="display:none">
-        <button class="ghost" id="pickRoot">Change folder location…</button>
-      </div>
-      <div class="folder-list" id="folderList"></div>
-      <div class="row" style="margin-top:8px">
-        <button class="ghost" id="pickFiles">Add files…</button>
-        <button class="ghost" id="pickDir">Add folder…</button>
-        <button class="ghost" id="clearDeck" title="Remove all loaded slides">Clear</button>
-      </div>
-      <div class="drop" id="drop">…or drag images/a folder here (adds to the current set)<br>(jpg · png · webp · gif · bmp · avif)</div>
-      <input type="file" id="filePick" multiple accept="image/*" hidden>
-      <input type="file" id="dirPick" webkitdirectory hidden>
-    </section>
-
-    <section class="sect">
-      <h2>FORMAT A · STREAM</h2>
-      <div class="row">
-        <div class="field"><span>Width px</span><input type="number" id="outW" value="1920" min="64" step="2"></div>
-        <div class="field"><span>Height px</span><input type="number" id="outH" value="216" min="32" step="2"></div>
-        <div class="field"><span>Suffix</span><input type="text" id="suffixA" value="_stream"></div>
-      </div>
-      <div class="presets" id="presets">
-        <button class="chip on" data-w="1920" data-h="216">1920×216 · 20%</button>
-        <button class="chip" data-w="1920" data-h="270">1920×270 · 25%</button>
-        <button class="chip" data-w="1920" data-h="324">1920×324 · 30%</button>
-        <button class="chip" data-w="1920" data-h="360">1920×360 · 33%</button>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <label for="canvasA">Canvas</label>
-        <select id="canvasA" style="width:130px"
-          title="Full 16:9 frame: the lower third is placed on a transparent 16:9 canvas (e.g. 1920×1080) — always exported as PNG">
-          <option value="strip" selected>Strip only</option>
-          <option value="top">16:9 · top</option>
-          <option value="middle">16:9 · center</option>
-          <option value="bottom">16:9 · bottom</option>
-        </select>
-      </div>
-    </section>
-
-    <section class="sect">
-      <h2>FORMAT B · LED SCREEN</h2>
-      <div class="row">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="fmtBOn" checked> Also create format B
-        </label>
-      </div>
-      <div class="row" id="fmtBRow">
-        <div class="field"><span>Width px</span><input type="number" id="outW2" value="936" min="64" step="2"></div>
-        <div class="field"><span>Height px</span><input type="number" id="outH2" value="208" min="32" step="2"></div>
-        <div class="field"><span>Suffix</span><input type="text" id="suffixB" value="_led"></div>
-      </div>
-      <div class="row">
-        <label for="canvasB">Canvas</label>
-        <select id="canvasB" style="width:130px"
-          title="Full 16:9 frame: the lower third is placed on a transparent 16:9 canvas — always exported as PNG">
-          <option value="strip" selected>Strip only</option>
-          <option value="top">16:9 · top</option>
-          <option value="middle">16:9 · center</option>
-          <option value="bottom">16:9 · bottom</option>
-        </select>
-      </div>
-      <div class="hint">Both formats always carry exactly the same text — never more or less on one of them. Line breaks and text size adapt to each format.</div>
-    </section>
-
-    <section class="sect">
-      <h2>TEXT &amp; LAYOUT</h2>
-      <div class="row">
-        <label for="layoutMode">Wrapping</label>
-        <select id="layoutMode" style="width:130px" title="Auto picks the wrapping that gives the largest text">
-          <option value="auto">Auto (best)</option>
-          <option value="wrap">Rewrap words</option>
-          <option value="stack">Keep lines</option>
-          <option value="oneline">One line</option>
-        </select>
-      </div>
-      <div class="row">
-        <label for="alignH">Alignment</label>
-        <select id="alignH" style="width:130px">
-          <option value="center" selected>Centered</option>
-          <option value="left">Left</option>
-        </select>
-      </div>
-      <div class="row">
-        <label for="charLimit">Max characters per part</label>
-        <input type="number" id="charLimit" value="200" min="40" max="400" step="5" style="width:130px"
-          title="Slides with more text are split into several lower thirds — never in the middle of a verse">
-      </div>
-      <div class="row">
-        <label for="textColorMode">Text color</label>
-        <select id="textColorMode" style="width:130px"
-          title="Single color repaints all text in one color — labels/chips keep their original look">
-          <option value="original" selected>Original</option>
-          <option value="custom">Single color</option>
-        </select>
-      </div>
-      <div class="row" id="textColorRow" style="display:none">
-        <label for="textColor">Color</label>
-        <input type="color" id="textColor" value="#ffffff" style="width:130px;height:30px;padding:2px">
-      </div>
-    </section>
-
-    <details class="sect adv">
-      <summary>ADVANCED</summary>
-      <div class="row" style="margin-top:10px">
-        <label for="maxScale">Max text upscaling</label>
-        <select id="maxScale" style="width:130px" title="How much the text may be enlarged compared to the original">
-          <option value="1">1.0×</option>
-          <option value="1.5">1.5×</option>
-          <option value="2" selected>2.0×</option>
-          <option value="3">3.0×</option>
-        </select>
-      </div>
-      <div class="row">
-        <label for="bgMode">Background</label>
-        <select id="bgMode" style="width:130px" title="Auto reuses the slide's own texture as background">
-          <option value="auto">Auto (texture)</option>
-          <option value="color">Solid color</option>
-        </select>
-      </div>
-      <div class="row">
-        <label for="sidebarMode">Fixed frame/logo</label>
-        <select id="sidebarMode" style="width:130px" title="Logo bars etc. that are identical on every slide">
-          <option value="keep">Keep (scale)</option>
-          <option value="hide">Hide</option>
-        </select>
-      </div>
-      <div class="row">
-        <label for="furnitureMode">Page numbers etc.</label>
-        <select id="furnitureMode" style="width:130px">
-          <option value="keep">Keep in corner</option>
-          <option value="drop" selected>Remove</option>
-        </select>
-      </div>
-      <div class="row">
-        <div class="field"><span>Edge padding px</span><input type="number" id="pad" value="28" min="0" step="2"></div>
-        <div class="field"><span>File type</span>
-          <select id="format">
-            <option value="png">PNG</option>
-            <option value="jpeg">JPG (quality 92)</option>
+<section class="ribbon" id="ribbon">
+  <!-- OUTPUT -->
+  <div class="rpanel on" data-tab="output">
+    <div class="rgroup">
+      <div class="rg-title">Format A · Stream</div>
+      <div class="rg-body">
+        <label class="fld"><span>Width</span><input type="number" id="outW" value="1920" min="64" step="2"></label>
+        <label class="fld"><span>Height</span><input type="number" id="outH" value="216" min="32" step="2"></label>
+        <label class="fld"><span>Suffix</span><input type="text" id="suffixA" value="_stream"></label>
+        <label class="fld"><span>Canvas</span>
+          <select id="canvasA" title="Full 16:9 frame places the strip on a transparent 1920×1080 canvas (PNG)">
+            <option value="strip" selected>Strip only</option>
+            <option value="top">16:9 top</option>
+            <option value="middle">16:9 center</option>
+            <option value="bottom">16:9 bottom</option>
           </select>
+        </label>
+        <div class="presets" id="presets">
+          <button class="chip on" data-w="1920" data-h="216">20%</button>
+          <button class="chip" data-w="1920" data-h="270">25%</button>
+          <button class="chip" data-w="1920" data-h="324">30%</button>
+          <button class="chip" data-w="1920" data-h="360">33%</button>
         </div>
       </div>
-
-      <div class="adv-sub">FRAME · AUTO-DETECTED</div>
-      <div class="row">
-        <div class="field"><span>Left %</span><input type="number" id="mLeft" value="0" min="0" max="25" step="0.1"></div>
-        <div class="field"><span>Right %</span><input type="number" id="mRight" value="0" min="0" max="25" step="0.1"></div>
-      </div>
-      <div class="row">
-        <div class="field"><span>Top %</span><input type="number" id="mTop" value="0" min="0" max="25" step="0.1"></div>
-        <div class="field"><span>Bottom %</span><input type="number" id="mBottom" value="0" min="0" max="25" step="0.1"></div>
-      </div>
-      <div class="hint">The frame is the edges that are identical on every slide (e.g. a logo bar). It is recreated on every lower third. Adjust and press the button if the auto result is off.</div>
-      <div class="row" style="margin-top:10px">
-        <button class="ghost" id="reanalyze">Re-analyze with these values</button>
-      </div>
-    </details>
-
-    <section class="sect">
-      <h2>EXPORT</h2>
-      <div class="row"><button class="big" id="exportDir" disabled>Save all to folder…</button></div>
-      <div class="row"><button class="ghost" id="exportZip" disabled>Download as ZIP</button></div>
-      <div class="hint" id="exportHint"></div>
-    </section>
-
-  </aside>
-
-  <main class="main" id="main">
-    <div class="empty" id="emptyState">
-      <div class="logo">LT<em>·</em>FACTORY</div>
-      <p class="empty-lead">Slides in — lower thirds out. Without ever changing the text.</p>
-      <ol class="steps">
-        <li><b>Pick your slides</b><span>Click a folder on the left, or drag images in here.</span></li>
-        <li><b>Check the previews</b><span>Everything is analyzed automatically — logos, text and splitting into parts. Click a preview to see it full size.</span></li>
-        <li><b>Save</b><span>One button exports every lower third in both formats.</span></li>
-      </ol>
     </div>
-    <div class="deck-head" id="deckHead" style="display:none">
-      <h1 id="deckTitle"></h1>
-      <span class="meta" id="deckMeta"></span>
+
+    <div class="rgroup" id="fmtBGroup">
+      <div class="rg-title"><label class="chk"><input type="checkbox" id="fmtBOn" checked> Format B · LED</label></div>
+      <div class="rg-body" id="fmtBRow">
+        <label class="fld"><span>Width</span><input type="number" id="outW2" value="936" min="64" step="2"></label>
+        <label class="fld"><span>Height</span><input type="number" id="outH2" value="208" min="32" step="2"></label>
+        <label class="fld"><span>Suffix</span><input type="text" id="suffixB" value="_led"></label>
+        <label class="fld"><span>Canvas</span>
+          <select id="canvasB">
+            <option value="strip" selected>Strip only</option>
+            <option value="top">16:9 top</option>
+            <option value="middle">16:9 center</option>
+            <option value="bottom">16:9 bottom</option>
+          </select>
+        </label>
+      </div>
     </div>
-    <div class="grid" id="grid"></div>
-  </main>
+    <p class="rnote">Both formats always carry the same text — line breaks and size adapt to each.</p>
+  </div>
+
+  <!-- TEXT -->
+  <div class="rpanel" data-tab="text">
+    <div class="rgroup">
+      <div class="rg-title">Layout</div>
+      <div class="rg-body">
+        <label class="fld"><span>Wrapping</span>
+          <select id="layoutMode" title="Auto picks the wrapping that gives the largest text">
+            <option value="auto">Auto (best)</option>
+            <option value="wrap">Rewrap words</option>
+            <option value="stack">Keep lines</option>
+            <option value="oneline">One line</option>
+          </select>
+        </label>
+        <label class="fld"><span>Alignment</span>
+          <select id="alignH">
+            <option value="center" selected>Centered</option>
+            <option value="left">Left</option>
+          </select>
+        </label>
+        <label class="fld"><span>Max text size</span>
+          <select id="maxScale">
+            <option value="1">1.0×</option>
+            <option value="1.5">1.5×</option>
+            <option value="2" selected>2.0×</option>
+            <option value="3">3.0×</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="rgroup">
+      <div class="rg-title">Splitting</div>
+      <div class="rg-body">
+        <label class="fld"><span>Split slides</span>
+          <select id="splitMode" title="How slides with a lot of text become several lower thirds">
+            <option value="auto" selected>Auto by length</option>
+            <option value="item">One per item (1. 2. •)</option>
+            <option value="line">One per line</option>
+            <option value="none">Never split</option>
+          </select>
+        </label>
+        <label class="fld"><span>Max characters</span>
+          <input type="number" id="charLimit" value="200" min="40" max="400" step="5"
+            title="Length budget per part when splitting Auto">
+        </label>
+      </div>
+    </div>
+    <div class="rgroup">
+      <div class="rg-title">Color</div>
+      <div class="rg-body">
+        <label class="fld"><span>Text color</span>
+          <select id="textColorMode">
+            <option value="original" selected>Original</option>
+            <option value="custom">Single color</option>
+          </select>
+        </label>
+        <label class="fld" id="textColorRow" style="display:none"><span>Pick</span>
+          <input type="color" id="textColor" value="#ffffff"></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- FRAME -->
+  <div class="rpanel" data-tab="frame">
+    <div class="rgroup">
+      <div class="rg-title">Slide elements</div>
+      <div class="rg-body">
+        <label class="fld"><span>Background</span>
+          <select id="bgMode">
+            <option value="auto">Auto (texture)</option>
+            <option value="color">Solid color</option>
+          </select>
+        </label>
+        <label class="fld"><span>Fixed frame/logo</span>
+          <select id="sidebarMode">
+            <option value="keep">Keep (scale)</option>
+            <option value="hide">Hide</option>
+          </select>
+        </label>
+        <label class="fld"><span>Page numbers</span>
+          <select id="furnitureMode">
+            <option value="keep">Keep in corner</option>
+            <option value="drop" selected>Remove</option>
+          </select>
+        </label>
+        <label class="fld"><span>Edge padding</span><input type="number" id="pad" value="28" min="0" step="2"></label>
+        <label class="fld"><span>File type</span>
+          <select id="format">
+            <option value="png">PNG</option>
+            <option value="jpeg">JPG</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <div class="rgroup">
+      <div class="rg-title">Frame · auto-detected</div>
+      <div class="rg-body">
+        <label class="fld sm"><span>Left %</span><input type="number" id="mLeft" value="0" min="0" max="25" step="0.1"></label>
+        <label class="fld sm"><span>Right %</span><input type="number" id="mRight" value="0" min="0" max="25" step="0.1"></label>
+        <label class="fld sm"><span>Top %</span><input type="number" id="mTop" value="0" min="0" max="25" step="0.1"></label>
+        <label class="fld sm"><span>Bottom %</span><input type="number" id="mBottom" value="0" min="0" max="25" step="0.1"></label>
+        <button class="btn-ghost" id="reanalyze">Re-analyze</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ STAGE ============================ -->
+<main class="stage" id="stage">
+  <div class="deck-head" id="deckHead" style="display:none">
+    <h1 id="deckTitle"></h1>
+    <span class="meta" id="deckMeta"></span>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+
+<!-- hidden source controls (used by start screen + File menu) -->
+<div hidden>
+  <div id="rootRow"><button id="pickRoot"></button></div>
+  <div id="folderList"></div>
+  <button id="pickFiles"></button><button id="pickDir"></button><button id="clearDeck"></button>
+  <div id="drop"></div>
+  <div id="emptyState"></div>
+  <input type="file" id="filePick" multiple accept="image/*" hidden>
+  <input type="file" id="dirPick" webkitdirectory hidden>
 </div>
 
-<div class="toast" id="toast"></div>
+<!-- ============================ START SCREEN ============================ -->
+<div class="start" id="startScreen">
+  <div class="start-inner">
+    <div class="start-brand">
+      <svg viewBox="0 0 40 40" width="34" height="34" aria-hidden="true">
+        <rect x="2" y="2" width="36" height="36" rx="7" fill="none" stroke="currentColor" stroke-width="2" opacity="0.45"/>
+        <rect x="8" y="23" width="24" height="6" rx="2" fill="var(--amber)"/>
+        <rect x="8" y="31" width="13" height="3.4" rx="1.4" fill="currentColor" opacity="0.5"/>
+      </svg>
+      <div>
+        <div class="start-title">LT&thinsp;FACTORY</div>
+        <div class="start-tag">Slides in — broadcast-ready lower thirds out.</div>
+      </div>
+    </div>
 
+    <div class="start-cols">
+      <div class="start-recent">
+        <div class="start-h">Continue a project</div>
+        <div class="recent-list" id="startRecent"></div>
+        <div class="start-actions">
+          <button class="btn-ghost" id="startOpen" disabled>Open</button>
+        </div>
+      </div>
+      <div class="start-new">
+        <div class="start-h">Start</div>
+        <button class="start-card" id="startNew">
+          <div class="sc-ic">＋</div>
+          <div><b>New project</b><span>Pick a folder of slides</span></div>
+        </button>
+        <button class="start-card" id="startImport">
+          <div class="sc-ic">↧</div>
+          <div><b>Import files</b><span>Choose images, or drag them in</span></div>
+        </button>
+        <div class="start-drop" id="startDrop">Drag images or a folder anywhere</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- New-project folder chooser (slides in) -->
+  <div class="start-sheet" id="folderSheet">
+    <div class="sheet-box">
+      <div class="sheet-head">
+        <div class="dlg-title">Choose slides</div>
+        <button class="icon-btn" id="folderSheetClose" title="Back">✕</button>
+      </div>
+      <div class="sheet-row" id="rootRowVisible" style="display:none">
+        <span id="rootPathLabel" class="path"></span>
+        <button class="btn-ghost" id="pickRootVisible">Change location…</button>
+      </div>
+      <div class="sheet-list" id="folderListVisible"></div>
+      <div class="sheet-foot">
+        <button class="btn-ghost" id="sheetImportFiles">Import files…</button>
+        <button class="btn-ghost" id="sheetImportFolder">Import folder…</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================ MODALS ============================ -->
 <div class="dlg" id="prefsDlg">
   <div class="dlg-box prefs-box">
     <div class="prefs-head">
       <div class="dlg-title">Preferences</div>
       <button class="prefs-close" id="prefsClose" title="Close">✕</button>
     </div>
-
     <div class="pref-group">APPEARANCE</div>
     <div class="pref-row">
       <div class="pref-lbl"><b>Theme</b><span>Color scheme of the app</span></div>
@@ -250,22 +314,19 @@
       <div class="pref-lbl"><b>Reduce motion</b><span>Turn off fades and animations</span></div>
       <label class="switch"><input type="checkbox" id="prefMotion"><span></span></label>
     </div>
-
     <div class="pref-group">STARTUP</div>
     <div class="pref-row">
-      <div class="pref-lbl"><b>Reopen last project</b><span>Continue where you left off on launch</span></div>
+      <div class="pref-lbl"><b>Reopen last project</b><span>Skip the start screen and continue</span></div>
       <label class="switch"><input type="checkbox" id="prefReopen" checked><span></span></label>
     </div>
-
     <div class="pref-group">EXPORT</div>
     <div class="pref-row">
-      <div class="pref-lbl"><b>Default file type</b><span>Format for new exports (16:9 canvas is always PNG)</span></div>
+      <div class="pref-lbl"><b>Default file type</b><span>16:9 canvas is always PNG</span></div>
       <select id="prefFormat" style="width:120px">
         <option value="png">PNG</option>
         <option value="jpeg">JPG</option>
       </select>
     </div>
-
     <div class="pref-group">ABOUT</div>
     <div class="pref-about">
       <div><b>LT Factory</b> · <span id="prefVersion">—</span></div>
@@ -280,11 +341,13 @@
     <div class="dlg-title">Save project as</div>
     <input type="text" id="projNameInput" placeholder="Project name…">
     <div class="dlg-row">
-      <button class="ghost" id="projNameCancel" style="width:auto">Cancel</button>
-      <button class="big" id="projNameOk" style="width:auto;padding:8px 18px">Save</button>
+      <button class="btn-ghost" id="projNameCancel">Cancel</button>
+      <button class="btn-primary" id="projNameOk">Save</button>
     </div>
   </div>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <div class="lightbox" id="lightbox">
   <button class="light-btn light-close" id="lightClose" title="Close (Esc)">✕</button>

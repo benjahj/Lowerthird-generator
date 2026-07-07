@@ -21,14 +21,14 @@ the app to Applications. On first launch, open Terminal and run
 
 ## Getting started
 
-1. **Pick your slides** — click "Change folder location…" once and choose the
-   folder where your slide folders live. From then on, your folders appear in
-   the left panel; click one, or just drag images into the window.
-   (jpg, png, webp, gif, bmp, avif)
-2. **Check the previews** — everything is analyzed automatically. Click any
-   preview (or the ⛶ icon) to view it full screen and flip through all slides
-   with the arrow keys.
-3. **Save** — one button exports every lower third. Done.
+1. **Start screen** — open a recent project, start a new one (pick a slides
+   folder), or import images. Double-click a recent project or select it and
+   press Open.
+2. **Adjust up top** — all project settings live in the **Output / Text / Frame**
+   tabs at the top; the preview fills the rest of the window.
+3. **Check the previews** — everything is analyzed automatically. Click any
+   preview (or the ⛶ icon) to view it full screen and flip through with arrow keys.
+4. **Export** — the button in the top-right saves every lower third. Done.
 
 The app remembers everything between sessions: your settings, your last folder,
 and every per-slide adjustment.
@@ -53,8 +53,10 @@ last project on launch, and set the default export file type.
   an image, so typography, colors and underlines stay exactly as designed.
   Perfect for scripture, where wording must be exact.
 - **Smart splitting** — slides with lots of text become several lower thirds.
-  It never splits mid-verse, never mixes a whole verse with a fragment of the
-  next, and the scripture reference is repeated on every part.
+  Choose how in the **Text** tab: *Auto by length*, *One per item* (numbered or
+  bulleted lists — 1. 2. •), or *One per line*. It never splits mid-verse, never
+  mixes a whole verse with a fragment of the next, and the scripture reference is
+  repeated on every part.
 - **Logos stay put** — anything that is identical on every slide (logo bars,
   frames) is detected and recreated on every lower third, so nothing looks
   like a crop.

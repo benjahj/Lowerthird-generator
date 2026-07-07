@@ -80,54 +80,65 @@ async function getBitmap(slide) {
 
 /* -------------------------------- indlæsning ------------------------------- */
 
+let serverFolders = [];
+
 async function loadServerFolders() {
   try {
-    // i den installerede app kan rod-mappen vælges frit
     try {
       const caps = await (await fetch('/api/caps')).json();
-      if (caps.pickroot) {
-        $('rootRow').style.display = '';
-        $('pickRoot').title = caps.root;
-      }
+      S.pickRoot = !!caps.pickroot;
+      S.rootPath = caps.root || '';
     } catch { /* almindelig server uden caps */ }
     const res = await fetch('/api/folders');
-    const folders = await res.json();
-    const list = $('folderList');
-    list.innerHTML = '';
-    if (!folders.length) {
-      list.innerHTML = '<div class="hint">No image folders found next to the app. Put a folder of slides there, or drag images in below.</div>';
+    serverFolders = await res.json();
+  } catch { serverFolders = []; }
+  buildFolderList();
+
+  // genoptag sidste session (kan slås fra i Preferences)
+  if (!S.slides.length && loadPrefs().reopen) {
+    let lastProj = null, last = null;
+    try {
+      lastProj = localStorage.getItem('ltfabrik.lastProject');
+      last = localStorage.getItem('ltfabrik.lastFolder');
+    } catch { /* ignorér */ }
+    if (lastProj && listProjects().some((p) => p.name === lastProj)) {
+      hideStart();
+      await openProject(lastProj);
       return;
     }
-    for (const f of folders) {
-      const b = document.createElement('button');
-      b.className = 'folder-item';
-      b.innerHTML = `<span class="nm"></span><span class="cnt">${f.count}</span>`;
-      b.querySelector('.nm').textContent = f.dir;
-      b.addEventListener('click', () => {
-        document.querySelectorAll('.folder-item').forEach((x) => x.classList.remove('on'));
-        b.classList.add('on');
-        loadServerFolder(f.dir);
-      });
-      b.dataset.dir = f.dir;
-      list.appendChild(b);
+    if (last && serverFolders.some((f) => f.dir === last)) {
+      hideStart();
+      await loadServerFolder(last);
+      S.dirty = false;
+      updateProjectUI();
+      return;
     }
-    // genoptag sidste session (kan slås fra i Preferences)
-    if (!S.slides.length && loadPrefs().reopen) {
-      let lastProj = null, last = null;
-      try {
-        lastProj = localStorage.getItem('ltfabrik.lastProject');
-        last = localStorage.getItem('ltfabrik.lastFolder');
-      } catch { /* ignorér */ }
-      if (lastProj && listProjects().some((p) => p.name === lastProj)) {
-        await openProject(lastProj);
-      } else if (last && list.querySelector(`.folder-item[data-dir="${CSS.escape(last)}"]`)) {
-        await loadServerFolder(last);
-        S.dirty = false; // gendannet tilstand = udgangspunkt, ikke en ændring
-        updateProjectUI();
-      }
-    }
-  } catch {
-    $('folderList').innerHTML = '<div class="hint">Could not load the folder list. Drag images in below instead.</div>';
+  }
+  showStart();
+}
+
+// folder-liste (bruges i "New project"-arket)
+function buildFolderList() {
+  const list = $('folderListVisible');
+  if (!list) return;
+  list.innerHTML = '';
+  const rr = $('rootRowVisible');
+  if (S.pickRoot && rr) { rr.style.display = ''; $('rootPathLabel').textContent = S.rootPath; }
+  if (!serverFolders.length) {
+    list.innerHTML = '<div class="recent-empty">No image folders found. Use “Import files…” or drag images in.</div>';
+    return;
+  }
+  for (const f of serverFolders) {
+    const b = document.createElement('button');
+    b.className = 'folder-item';
+    b.dataset.dir = f.dir;
+    b.innerHTML = `<span class="nm"></span><span class="cnt">${f.count}</span>`;
+    b.querySelector('.nm').textContent = f.dir;
+    b.addEventListener('click', async () => {
+      hideStart();
+      await loadServerFolder(f.dir);
+    });
+    list.appendChild(b);
   }
 }
 
@@ -300,6 +311,7 @@ function clearDeck() {
   S.totalParts = 0;
   $('exportDir').disabled = true;
   $('exportZip').disabled = true;
+  $('exportBtn').disabled = true;
   document.querySelectorAll('.folder-item').forEach((x) => x.classList.remove('on'));
   try {
     localStorage.removeItem('ltfabrik.lastFolder');
@@ -313,6 +325,7 @@ function clearDeck() {
 }
 
 async function ingest(slides, savedFrame) {
+  hideStart();
   for (const b of bmpCache.values()) { try { b.bmp.close(); } catch { /* i brug */ } }
   bmpCache.clear();
   S.slides = slides;
@@ -330,6 +343,7 @@ async function ingest(slides, savedFrame) {
   }
   $('exportDir').disabled = true;
   $('exportZip').disabled = true;
+  $('exportBtn').disabled = true;
   buildCards(null);
   await analyzeDeck();
 }
@@ -456,6 +470,7 @@ async function analyzeDeck() {
   S.analyzed = true;
   $('exportDir').disabled = !window.showDirectoryPicker;
   $('exportZip').disabled = false;
+  $('exportBtn').disabled = false;
   $('exportHint').textContent = window.showDirectoryPicker
     ? 'Saves one file per slide per format directly to a folder you choose.'
     : 'Your browser does not support direct folder access — use ZIP.';
@@ -721,6 +736,7 @@ function getSettings() {
   return {
     formats,
     textColor: $('textColorMode').value === 'custom' ? $('textColor').value : null,
+    split: $('splitMode').value,
     charLimit: Math.min(400, Math.max(40, +$('charLimit').value || 200)),
     pad: Math.max(0, +$('pad').value || 0),
     format: $('format').value,
@@ -1082,16 +1098,34 @@ function balancedSplit(items, weights, k) {
 // vers (markeret med hævede versnumre), og et helt vers blandes aldrig med en
 // stump af et andet. Kun et vers, der alene er for langt, deles — og så står
 // det alene på sine dele. Skriftsteds-chippen gentages på alle dele.
+// Markerer ord der starter et "punkt/emne": hævede versnumre (w.sup) ELLER en
+// kort indledende token på en linje efterfulgt af et tydeligt mellemrum
+// (fx "1." "2." "•" "a)" "iv." — uden OCR, ud fra geometri).
+function markItems(a, wctx) {
+  if (a._items) return;
+  a._items = true;
+  const byLine = new Map();
+  for (const w of wctx.words) { if (!byLine.has(w.li)) byLine.set(w.li, []); byLine.get(w.li).push(w); }
+  for (const line of byLine.values()) {
+    const first = line[0];
+    if (!first || line.length < 2) continue;
+    const lh = first.lh || first.h || 1;
+    const gap = line[1].x0 - first.x1;
+    // smalt begyndelses-ord + tydeligt mellemrum bagefter = punkt-markør
+    if (first.w <= 2.3 * lh && gap >= 0.42 * lh) first.item = true;
+  }
+}
+
 function partsOf(sl, s) {
   const a = sl.ana;
   if (!a || a.photo) return [null];
   const wctx = wordsOf(a);
   const all = wctx.words;
   if (!all.length) return [null];
+  const mode = s.split || 'auto';
+  if (mode === 'none') return [all];
+
   const limit = s.charLimit;
-  // tegn-estimat: ordbredde ÷ (0,55 × linjehøjde) — kalibreret mod rigtige
-  // versslides. Brede tegn (fx store caps-fonte) giver højere estimat → færre
-  // tegn pr. del, som ønsket.
   const est = (wd) => Math.max(1, Math.round(wd.w / (0.55 * Math.max(wd.lh || wd.h, 1))));
   const sum = (ws) => ws.reduce((t, w) => t + est(w) + 1, 0);
 
@@ -1107,42 +1141,66 @@ function partsOf(sl, s) {
   }
   if (!body.length) return [all];
 
-  if (sum(all) <= limit) return [all];
+  const withHeader = (list) => list.map((p) => (header.length ? [...header, ...p] : p));
 
-  // vers-grupper: nyt vers ved hvert hævet versnummer
-  const verses = [];
-  let cur = [];
-  for (const w of body) {
-    if (w.sup && cur.length) { verses.push(cur); cur = []; }
-    cur.push(w);
+  // ÉN DEL PR. LINJE
+  if (mode === 'line') {
+    const lines = [];
+    for (const w of body) {
+      if (!lines.length || lines[lines.length - 1][0].li !== w.li) lines.push([]);
+      lines[lines.length - 1].push(w);
+    }
+    return lines.length > 1 ? withHeader(lines) : [all];
   }
-  if (cur.length) verses.push(cur);
 
-  const eff = Math.max(60, limit - sum(header)); // plads til chippen på hver del
-  const vN = verses.map((v) => sum(v));
+  // ÉN DEL PR. PUNKT/EMNE (opdel ved hvert versnummer ELLER punkt-markør)
+  if (mode === 'item') {
+    markItems(a, wctx);
+    const items = [];
+    let cur = [];
+    for (const w of body) {
+      if ((w.sup || w.item) && cur.length) { items.push(cur); cur = []; }
+      cur.push(w);
+    }
+    if (cur.length) items.push(cur);
+    if (items.length <= 1) return mode === 'item' && sum(all) > limit ? autoSplit() : [all];
+    return withHeader(items);
+  }
 
-  // sekvenser af normale vers balanceres; for lange vers får egne, rene dele
-  const parts = [];
-  let run = [], runN = [];
-  const flushRun = () => {
-    if (!run.length) return;
-    const totalRun = runN.reduce((p, q) => p + q, 0);
-    const k = Math.max(1, Math.ceil(totalRun / eff));
-    for (const g of balancedSplit(run, runN, k)) parts.push(g.flat());
-    run = []; runN = [];
-  };
-  verses.forEach((v, i) => {
-    if (vN[i] > eff) {
-      flushRun();
-      // verset er alene for langt: del det ved ordgrænser — kun dette vers
-      const k = Math.ceil(vN[i] / eff);
-      for (const g of balancedSplit(v, v.map((w) => est(w) + 1), k)) parts.push(g);
-    } else { run.push(v); runN.push(vN[i]); }
-  });
-  flushRun();
+  // AUTO (balanceret efter længde) — original opførsel
+  return autoSplit();
 
-  if (parts.length <= 1) return [all];
-  return parts.map((p) => (header.length ? [...header, ...p] : p));
+  function autoSplit() {
+    if (sum(all) <= limit) return [all];
+    const verses = [];
+    let cur = [];
+    for (const w of body) {
+      if (w.sup && cur.length) { verses.push(cur); cur = []; }
+      cur.push(w);
+    }
+    if (cur.length) verses.push(cur);
+    const eff = Math.max(60, limit - sum(header));
+    const vN = verses.map((v) => sum(v));
+    const parts = [];
+    let run = [], runN = [];
+    const flushRun = () => {
+      if (!run.length) return;
+      const totalRun = runN.reduce((p, q) => p + q, 0);
+      const k = Math.max(1, Math.ceil(totalRun / eff));
+      for (const g of balancedSplit(run, runN, k)) parts.push(g.flat());
+      run = []; runN = [];
+    };
+    verses.forEach((v, i) => {
+      if (vN[i] > eff) {
+        flushRun();
+        const k = Math.ceil(vN[i] / eff);
+        for (const g of balancedSplit(v, v.map((w) => est(w) + 1), k)) parts.push(g);
+      } else { run.push(v); runN.push(vN[i]); }
+    });
+    flushRun();
+    if (parts.length <= 1) return [all];
+    return withHeader(parts);
+  }
 }
 
 // Vælger ombrydning for ét format: den kandidat der giver størst tekst vinder.
@@ -1346,8 +1404,8 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
 // så en skyder-bevægelse kun koster selve tegningen.
 
 function layoutSig(sl, s) {
-  return JSON.stringify([s.formats.map((f) => [f.W, f.H]), s.pad, s.layout, s.align,
-    s.maxScale, s.charLimit, s.sidebar, s.furniture, sl.ov.mode, sl.ov.img !== false, sl.ov.rows || 0]);
+  return JSON.stringify([s.formats.map((f) => [f.W, f.H, f.canvas]), s.pad, s.layout, s.align,
+    s.maxScale, s.charLimit, s.split, s.sidebar, s.furniture, sl.ov.mode, sl.ov.img !== false, sl.ov.rows || 0]);
 }
 
 function layoutFor(sl, s) {
@@ -1430,9 +1488,9 @@ function buildCards(counts) {
   cardObserver.disconnect();
   const grid = $('grid');
   grid.innerHTML = '';
-  $('emptyState').style.display = S.slides.length ? 'none' : '';
   $('deckHead').style.display = S.slides.length ? '' : 'none';
   $('deckTitle').textContent = S.deckName;
+  if (!S.slides.length) showStart();
 
   S.slides.forEach((sl, i) => {
     sl._cards = [];
@@ -1748,7 +1806,7 @@ async function exportZip() {
 
 const SETTING_IDS = ['outW', 'outH', 'outW2', 'outH2', 'suffixA', 'suffixB', 'fmtBOn', 'canvasA', 'canvasB',
   'pad', 'format', 'layoutMode', 'alignH', 'maxScale', 'charLimit', 'bgMode', 'sidebarMode', 'furnitureMode',
-  'textColorMode', 'textColor'];
+  'textColorMode', 'textColor', 'splitMode'];
 const NO_RENDER = new Set(['suffixA', 'suffixB', 'format']); // bruges først ved eksport
 const ON_COMMIT = new Set(['outW', 'outH', 'outW2', 'outH2', 'pad', 'charLimit']); // tal: render ved Enter/blur
 
@@ -2120,25 +2178,90 @@ $('reanalyze').addEventListener('click', async () => {
 $('exportDir').addEventListener('click', exportToDir);
 $('exportZip').addEventListener('click', exportZip);
 
-$('pickRoot').addEventListener('click', async () => {
-  await fetch('/api/pickroot');
-  loadServerFolders();
+/* ------------------------------ ribbon tabs -------------------------------- */
+$('ribbonTabs').querySelectorAll('.rtab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    $('ribbonTabs').querySelectorAll('.rtab').forEach((t) => t.classList.toggle('on', t === tab));
+    document.querySelectorAll('.rpanel').forEach((p) => p.classList.toggle('on', p.dataset.tab === tab.dataset.tab));
+    document.body.classList.remove('ribbon-collapsed');
+  });
 });
+$('ribbonToggle').addEventListener('click', () => document.body.classList.toggle('ribbon-collapsed'));
 
-const drop = $('drop');
-drop.addEventListener('click', () => $('filePick').click());
-$('filePick').addEventListener('change', (e) => loadFiles(e.target.files));
-$('dirPick').addEventListener('change', (e) => loadFiles(e.target.files));
+/* ------------------------------ export menu -------------------------------- */
+$('exportBtn').addEventListener('click', (e) => {
+  if ($('exportBtn').disabled) return;
+  e.stopPropagation();
+  $('exportMenu').classList.toggle('open');
+});
+$('exportDir').addEventListener('click', () => { $('exportMenu').classList.remove('open'); exportToDir(); });
+$('exportZip').addEventListener('click', () => { $('exportMenu').classList.remove('open'); exportZip(); });
+document.addEventListener('click', (e) => { if (!e.target.closest('#exportMenu')) $('exportMenu').classList.remove('open'); });
+
+/* ------------------------------ start screen ------------------------------- */
+function showStart() {
+  buildStartRecent();
+  buildFolderList();
+  $('folderSheet').classList.remove('on');
+  $('startScreen').classList.add('on');
+}
+function hideStart() { $('startScreen').classList.remove('on'); }
+
+let startSel = null;
+function buildStartRecent() {
+  const list = $('startRecent');
+  list.innerHTML = '';
+  startSel = null;
+  $('startOpen').disabled = true;
+  const projects = listProjects();
+  $('startOpen').closest('.start-actions').style.display = projects.length ? '' : 'none';
+  if (!projects.length) {
+    list.innerHTML = '<div class="recent-empty">No saved projects yet.<br>Start a new one on the right →</div>';
+    return;
+  }
+  for (const p of projects) {
+    const b = document.createElement('button');
+    b.className = 'recent-item';
+    b.innerHTML = '<div><div class="nm"></div><div class="sub"></div></div><span class="dt"></span><button class="del" title="Delete">✕</button>';
+    b.querySelector('.nm').textContent = p.name;
+    b.querySelector('.sub').textContent = (p.deckKey || '').split('/').pop() || '';
+    b.querySelector('.dt').textContent = new Date(p.savedAt).toLocaleDateString();
+    b.addEventListener('click', (e) => {
+      if (e.target.closest('.del')) {
+        storeProjects(listProjects().filter((x) => x.name !== p.name));
+        buildStartRecent();
+        return;
+      }
+      list.querySelectorAll('.recent-item').forEach((x) => x.classList.toggle('on', x === b));
+      startSel = p.name;
+      $('startOpen').disabled = false;
+    });
+    b.addEventListener('dblclick', () => { hideStart(); openProject(p.name); });
+    list.appendChild(b);
+  }
+}
+$('startOpen').addEventListener('click', () => { if (startSel) { hideStart(); openProject(startSel); } });
+$('startNew').addEventListener('click', () => { buildFolderList(); $('folderSheet').classList.add('on'); });
+$('startImport').addEventListener('click', () => $('filePick').click());
+$('folderSheetClose').addEventListener('click', () => $('folderSheet').classList.remove('on'));
+$('sheetImportFiles').addEventListener('click', () => $('filePick').click());
+$('sheetImportFolder').addEventListener('click', () => $('dirPick').click());
+$('pickRootVisible').addEventListener('click', async () => { await fetch('/api/pickroot'); await loadServerFolders(); buildFolderList(); $('folderSheet').classList.add('on'); });
+$('miStart').addEventListener('click', () => { closeFileMenu(); showStart(); });
+
+/* ------------------------------ file pickers ------------------------------- */
+$('pickRoot').addEventListener('click', async () => { await fetch('/api/pickroot'); loadServerFolders(); });
+$('filePick').addEventListener('change', (e) => { hideStart(); loadFiles(e.target.files); });
+$('dirPick').addEventListener('change', (e) => { hideStart(); loadFiles(e.target.files); });
 $('pickFiles').addEventListener('click', () => $('filePick').click());
 $('pickDir').addEventListener('click', () => $('dirPick').click());
-drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
-drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-drop.addEventListener('drop', async (e) => {
+
+/* ------------------------------ drag & drop -------------------------------- */
+async function handleDropEvent(e) {
   e.preventDefault();
-  drop.classList.remove('over');
-  // VIGTIGT: getAsEntry/getAsFile skal kaldes synkront — dataTransfer tømmes ved første await
+  $('startDrop').classList.remove('over');
   const entries = [], plain = [];
-  for (const it of e.dataTransfer.items) {
+  for (const it of e.dataTransfer.items || []) {
     const entry = it.webkitGetAsEntry && it.webkitGetAsEntry();
     if (entry) entries.push(entry);
     else { const f = it.getAsFile(); if (f) plain.push(f); }
@@ -2158,8 +2281,11 @@ drop.addEventListener('drop', async (e) => {
     } else resolve();
   });
   for (const entry of entries) await walkEntry(entry);
-  loadFiles(files);
-});
+  if (files.length) { hideStart(); loadFiles(files); }
+}
+window.addEventListener('dragover', (e) => { e.preventDefault(); if ($('startScreen').classList.contains('on')) $('startDrop').classList.add('over'); });
+window.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) $('startDrop').classList.remove('over'); });
+window.addEventListener('drop', handleDropEvent);
 
 // debug-hook til automatiseret test
 window.__lt = { S, loadServerFolder, renderAll, getSettings, resolveMode, geomFor, chooseRows, partsOf, layoutFor, slideBlob, drawSlide, zipWriter };
