@@ -80,68 +80,21 @@ async function getBitmap(slide) {
 
 /* -------------------------------- indlæsning ------------------------------- */
 
-let serverFolders = [];
-
+// Ved opstart: genåbn sidste projekt (hvis slået til), ellers vis start-skærmen.
+// Appen scanner IKKE selv PC'en for slides — man importerer dem selv.
 async function loadServerFolders() {
-  try {
-    try {
-      const caps = await (await fetch('/api/caps')).json();
-      S.pickRoot = !!caps.pickroot;
-      S.rootPath = caps.root || '';
-    } catch { /* almindelig server uden caps */ }
-    const res = await fetch('/api/folders');
-    serverFolders = await res.json();
-  } catch { serverFolders = []; }
-  buildFolderList();
-
-  // genoptag sidste session (kan slås fra i Preferences)
   if (!S.slides.length && loadPrefs().reopen) {
-    let lastProj = null, last = null;
-    try {
-      lastProj = localStorage.getItem('ltfabrik.lastProject');
-      last = localStorage.getItem('ltfabrik.lastFolder');
-    } catch { /* ignorér */ }
-    if (lastProj && listProjects().some((p) => p.name === lastProj)) {
+    const recents = (await idbAll()).sort((a, b) => b.savedAt - a.savedAt);
+    if (recents[0] && recents[0].blob) {
       hideStart();
-      await openProject(lastProj);
-      return;
-    }
-    if (last && serverFolders.some((f) => f.dir === last)) {
-      hideStart();
-      await loadServerFolder(last);
-      S.dirty = false;
-      updateProjectUI();
-      return;
+      try { await openProjectBlob(recents[0].blob, recents[0].handle || null); return; }
+      catch { /* faldt igennem — vis start */ }
     }
   }
   showStart();
 }
 
-// folder-liste (bruges i "New project"-arket)
-function buildFolderList() {
-  const list = $('folderListVisible');
-  if (!list) return;
-  list.innerHTML = '';
-  const rr = $('rootRowVisible');
-  if (S.pickRoot && rr) { rr.style.display = ''; $('rootPathLabel').textContent = S.rootPath; }
-  if (!serverFolders.length) {
-    list.innerHTML = '<div class="recent-empty">No image folders found. Use “Import files…” or drag images in.</div>';
-    return;
-  }
-  for (const f of serverFolders) {
-    const b = document.createElement('button');
-    b.className = 'folder-item';
-    b.dataset.dir = f.dir;
-    b.innerHTML = `<span class="nm"></span><span class="cnt">${f.count}</span>`;
-    b.querySelector('.nm').textContent = f.dir;
-    b.addEventListener('click', async () => {
-      hideStart();
-      await loadServerFolder(f.dir);
-    });
-    list.appendChild(b);
-  }
-}
-
+// bruges kun af automatiserede tests (debug-hook) — loader en server-mappe direkte
 async function loadServerFolder(dir, override) {
   const res = await fetch('/api/files?dir=' + encodeURIComponent(dir));
   const files = res.ok ? await res.json() : null;
@@ -174,108 +127,218 @@ async function loadServerFolder(dir, override) {
 }
 
 /* --------------------------------- projekter -------------------------------- */
-// Et projekt = deck-mappe + alle indstillinger + per-slide justeringer,
-// gemt under navn i localStorage. Usaved ændringer markeres og der spørges
-// ved lukning.
+// Et projekt gemmes som en selvstændig .ltproj-FIL (en pakket container med
+// alle indstillinger + per-slide justeringer + selve billederne). Filen kan
+// flyttes til en anden PC og åbnes der. "Recent" holder en fuld kopi i en lokal
+// IndexedDB-cache, så de kan genåbnes uden at pege på filen igen.
 
-function listProjects() {
-  try { return JSON.parse(localStorage.getItem('ltfabrik.projects')) || []; } catch { return []; }
-}
-function storeProjects(list) {
-  try { localStorage.setItem('ltfabrik.projects', JSON.stringify(list.slice(0, 20))); } catch { /* fuld */ }
-}
+function markDirty() { if (!S.dirty) { S.dirty = true; updateProjectUI(); } }
+function autoProjectName() { return `${S.deckName || 'Untitled'} — ${new Date().toLocaleDateString()}`; }
 
-function markDirty() {
-  if (!S.dirty) { S.dirty = true; updateProjectUI(); }
+// dirty-markering ved per-slide ændringer (selve tilstanden bor nu i projekt-filen)
+const saveDeckState = debounce(() => { markDirty(); }, 250);
+
+/* --- IndexedDB: cache af seneste projekter (fuld blob + evt. fil-handle) --- */
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open('ltfactory', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('recents', { keyPath: 'id' });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function idbAll() {
+  try {
+    const db = await idbOpen();
+    return await new Promise((res) => { const q = db.transaction('recents').objectStore('recents').getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); });
+  } catch { return []; }
+}
+async function idbPut(rec) {
+  try { const db = await idbOpen(); await new Promise((res) => { const t = db.transaction('recents', 'readwrite'); t.objectStore('recents').put(rec); t.oncomplete = res; t.onerror = res; }); } catch { /* */ }
+  // behold kun de 12 nyeste
+  const all = (await idbAll()).sort((a, b) => b.savedAt - a.savedAt);
+  for (const old of all.slice(12)) await idbDel(old.id);
+}
+async function idbDel(id) {
+  try { const db = await idbOpen(); await new Promise((res) => { const t = db.transaction('recents', 'readwrite'); t.objectStore('recents').delete(id); t.oncomplete = res; t.onerror = res; }); } catch { /* */ }
 }
 
 function updateProjectUI() {
   const el = $('projName');
   const dirty = S.dirty && S.slides.length;
   el.textContent = S.projectName ? (dirty ? '● ' : '') + S.projectName : (dirty ? '● unsaved' : '');
-  el.classList.toggle('none', !S.projectName);
-  // Recent projects i File-menuen
-  const list = $('miRecent');
-  list.innerHTML = '';
-  const projects = listProjects().slice(0, 8);
-  if (!projects.length) {
-    list.innerHTML = '<div class="mi-empty">No saved projects yet</div>';
-    return;
-  }
-  for (const p of projects) {
+  el.classList.toggle('none', !S.projectName && !dirty);
+  refreshRecentsUI();
+}
+
+async function refreshRecentsUI() {
+  const recents = (await idbAll()).sort((a, b) => b.savedAt - a.savedAt);
+  const menu = $('miRecent');
+  menu.innerHTML = '';
+  if (!recents.length) { menu.innerHTML = '<div class="mi-empty">No recent projects</div>'; }
+  for (const r of recents.slice(0, 8)) {
     const b = document.createElement('button');
-    b.className = 'mi mi-recent' + (p.name === S.projectName ? ' on' : '');
-    b.innerHTML = '<span class="nm"></span><span class="dt"></span><span class="del" title="Delete project">✕</span>';
-    b.querySelector('.nm').textContent = p.name;
-    b.querySelector('.dt').textContent = new Date(p.savedAt).toLocaleDateString();
-    b.addEventListener('click', (e) => {
-      if (e.target.closest('.del')) {
-        storeProjects(listProjects().filter((x) => x.name !== p.name));
-        if (S.projectName === p.name) { S.projectName = null; try { localStorage.removeItem('ltfabrik.lastProject'); } catch { /* */ } }
-        updateProjectUI();
-        e.stopPropagation();
-        return;
-      }
-      closeFileMenu();
-      openProject(p.name);
+    b.className = 'mi mi-recent' + (r.name === S.projectName ? ' on' : '');
+    b.innerHTML = '<span class="nm"></span><span class="dt"></span><span class="del" title="Remove from recents">✕</span>';
+    b.querySelector('.nm').textContent = r.name;
+    b.querySelector('.dt').textContent = new Date(r.savedAt).toLocaleDateString();
+    b.addEventListener('click', async (e) => {
+      if (e.target.closest('.del')) { e.stopPropagation(); await idbDel(r.id); refreshRecentsUI(); return; }
+      closeFileMenu(); openRecent(r);
     });
-    list.appendChild(b);
+    menu.appendChild(b);
   }
+  if (typeof buildStartRecent === 'function') buildStartRecent(recents);
 }
 
-function autoProjectName() {
-  return `${S.deckName || 'Untitled'} — ${new Date().toLocaleDateString()}`;
+/* ----------------------- .ltproj: byg / læs container ---------------------- */
+
+async function slideBytes(sl) {
+  if (sl.src.file) return new Uint8Array(await sl.src.file.arrayBuffer());
+  return new Uint8Array(await (await fetch(sl.src.url)).arrayBuffer());
 }
 
-function saveProject(name) {
-  if (!S.deckKey) {
-    toast('Projects need a folder-based deck (drag-and-drop sets cannot be reopened).', true);
-    return false;
-  }
-  const ov = {};
-  for (const sl of S.slides) ov[sl.name] = sl.ov;
-  const proj = {
-    name,
-    savedAt: Date.now(),
-    deckKey: S.deckKey,
-    settings: snapshotSettings(),
-    frame: S.manualFrame ? S.frame : null,
-    ov,
+async function buildProjectBlob(name) {
+  const zw = zipWriter();
+  const meta = {
+    app: 'LT Factory', format: 1, name, deckName: S.deckName, savedAt: Date.now(),
+    settings: snapshotSettings(), frame: S.manualFrame ? S.frame : null, slides: [],
   };
-  storeProjects([proj, ...listProjects().filter((p) => p.name !== name)]);
-  S.projectName = name;
-  S.dirty = false;
-  try { localStorage.setItem('ltfabrik.lastProject', name); } catch { /* */ }
-  updateProjectUI();
-  toast(`Project "${name}" saved.`);
-  return true;
+  for (let i = 0; i < S.slides.length; i++) {
+    const sl = S.slides[i];
+    const file = `slides/${String(i).padStart(3, '0')}_${sl.name}`;
+    zw.add(file, await slideBytes(sl));
+    meta.slides.push({ name: sl.name, file, ov: sl.ov });
+  }
+  zw.add('ltproject.json', new TextEncoder().encode(JSON.stringify(meta)));
+  return { blob: zw.finish(), meta };
 }
 
-async function openProject(name) {
-  const proj = listProjects().find((p) => p.name === name);
-  if (!proj) { toast('Project not found.', true); return; }
-  applySettings(proj.settings);
-  saveSettings();
-  const ok = await loadServerFolder(proj.deckKey, { ov: proj.ov, frame: proj.frame });
-  if (!ok) return;
-  S.projectName = name;
+const MIME_BY_EXT = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp', '.avif': 'image/avif' };
+
+// minimal ZIP-læser (kun "store", som writeren producerer)
+function readZip(u8) {
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= 0 && i > u8.length - 22 - 65536; i--) { if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
+  if (eocd < 0) throw new Error('Not a valid .ltproj file');
+  const count = dv.getUint16(eocd + 10, true);
+  let off = dv.getUint32(eocd + 16, true);
+  const map = new Map();
+  const dec = new TextDecoder();
+  for (let n = 0; n < count; n++) {
+    if (dv.getUint32(off, true) !== 0x02014b50) break;
+    const compSize = dv.getUint32(off + 20, true);
+    const nameLen = dv.getUint16(off + 28, true);
+    const extraLen = dv.getUint16(off + 30, true);
+    const commentLen = dv.getUint16(off + 32, true);
+    const lho = dv.getUint32(off + 42, true);
+    const name = dec.decode(u8.subarray(off + 46, off + 46 + nameLen));
+    const lNameLen = dv.getUint16(lho + 26, true);
+    const lExtra = dv.getUint16(lho + 28, true);
+    const dataStart = lho + 30 + lNameLen + lExtra;
+    map.set(name, u8.subarray(dataStart, dataStart + compSize));
+    off += 46 + nameLen + extraLen + commentLen;
+  }
+  return map;
+}
+
+async function openProjectBlob(blob, handle) {
+  const files = readZip(new Uint8Array(await blob.arrayBuffer()));
+  const metaU8 = files.get('ltproject.json');
+  if (!metaU8) throw new Error('This file is not an LT Factory project.');
+  const meta = JSON.parse(new TextDecoder().decode(metaU8));
+  applySettings(meta.settings); saveSettings();
+  const slides = (meta.slides || []).map((si) => {
+    const data = files.get(si.file);
+    const ext = (si.name.match(/\.[^.]+$/) || ['.jpg'])[0].toLowerCase();
+    const type = MIME_BY_EXT[ext] || 'image/jpeg';
+    const f = new File([data ? new Blob([data], { type }) : new Blob()], si.name, { type });
+    return { name: si.name, src: { file: f }, ov: si.ov || { mode: 'auto', off: 0, on: true, img: true } };
+  });
+  S.deckName = meta.deckName || meta.name || 'Project';
+  S.deckKey = null;
+  S.projectName = meta.name || null;
+  S.fileHandle = handle || null;
+  hideStart();
+  await ingest(slides, meta.frame || null);
   S.dirty = false;
-  try { localStorage.setItem('ltfabrik.lastProject', name); } catch { /* */ }
-  storeProjects([proj, ...listProjects().filter((p) => p.name !== name)]); // seneste øverst
   updateProjectUI();
 }
 
-// gemmer per-slide justeringer + manuel ramme pr. mappe (til næste session)
-const saveDeckState = debounce(() => {
-  markDirty();
-  if (!S.deckKey) return; // trukket-ind filer har ingen stabil nøgle
-  const ov = {};
-  for (const sl of S.slides) ov[sl.name] = sl.ov;
+/* ----------------------------- gem / åbn ----------------------------------- */
+
+async function cacheRecent(name, blob, handle) {
+  await idbPut({ id: (handle && handle.name) || name, name, deckName: S.deckName, savedAt: Date.now(), blob, handle: handle || null });
+}
+
+async function saveProjectAs() {
+  if (!S.slides.length) { toast('Import some slides first.', true); return; }
+  const name = S.projectName || S.deckName || 'project';
+  setStatus('saving project…', true, 0);
+  const { blob } = await buildProjectBlob(name);
+  const suggested = name.replace(/[^\w æøåÆØÅ.-]+/g, ' ').trim() + '.ltproj';
+  if (window.showSaveFilePicker) {
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({ suggestedName: suggested, types: [{ description: 'LT Factory project', accept: { 'application/octet-stream': ['.ltproj'] } }] });
+    } catch { setStatus('ready', false, null); return; } // annulleret
+    const w = await handle.createWritable(); await w.write(blob); await w.close();
+    S.projectName = handle.name.replace(/\.ltproj$/i, '');
+    S.fileHandle = handle;
+    await cacheRecent(S.projectName, blob, handle);
+    S.dirty = false; updateProjectUI();
+    setStatus('ready', false, null);
+    toast(`Project saved to "${handle.name}".`);
+  } else {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = suggested; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+    S.projectName = name; await cacheRecent(name, blob, null);
+    S.dirty = false; updateProjectUI();
+    setStatus('ready', false, null);
+    toast('Project file downloaded.');
+  }
+}
+
+async function saveProject() {
+  if (!S.slides.length) { toast('Import some slides first.', true); return; }
+  if (S.fileHandle) {
+    try {
+      setStatus('saving project…', true, 0);
+      const { blob } = await buildProjectBlob(S.projectName || S.fileHandle.name.replace(/\.ltproj$/i, ''));
+      const w = await S.fileHandle.createWritable(); await w.write(blob); await w.close();
+      await cacheRecent(S.projectName || S.fileHandle.name, blob, S.fileHandle);
+      S.dirty = false; updateProjectUI();
+      setStatus('ready', false, null);
+      toast('Project saved.');
+      return;
+    } catch { setStatus('ready', false, null); /* fald tilbage til Save as */ }
+  }
+  return saveProjectAs();
+}
+
+async function openRecent(rec) {
   try {
-    localStorage.setItem('ltfabrik.deck.' + S.deckKey,
-      JSON.stringify({ ov, frame: S.manualFrame ? S.frame : null }));
-  } catch { /* fuld/privat storage */ }
-}, 400);
+    if (rec.blob) { await openProjectBlob(rec.blob, rec.handle || null); return; }
+    if (rec.handle) {
+      if (rec.handle.queryPermission) {
+        let p = await rec.handle.queryPermission({ mode: 'read' });
+        if (p !== 'granted') p = await rec.handle.requestPermission({ mode: 'read' });
+        if (p !== 'granted') { toast('Permission denied.', true); return; }
+      }
+      const file = await rec.handle.getFile();
+      await openProjectBlob(file, rec.handle);
+    }
+  } catch (e) {
+    toast('Could not open project: ' + e.message, true);
+    await idbDel(rec.id); refreshRecentsUI();
+  }
+}
+
+async function openProjectFile(file) {
+  try { await openProjectBlob(file, null); await cacheRecent(S.projectName || file.name.replace(/\.ltproj$/i, ''), file, null); refreshRecentsUI(); }
+  catch (e) { toast('Could not open project: ' + e.message, true); }
+}
 
 async function loadFiles(fileList) {
   const files = [...fileList]
@@ -2037,39 +2100,19 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('#fileMenu')) closeFileMenu();
 });
 
-function showNameDlg() {
-  $('projNameInput').value = S.projectName || autoProjectName();
-  $('nameDlg').classList.add('on');
-  $('projNameInput').focus();
-  $('projNameInput').select();
-}
-function doSave() {
-  if (!S.slides.length) { toast('Load some slides first.', true); return; }
-  if (S.projectName) saveProject(S.projectName);
-  else showNameDlg();
-}
-$('miSave').addEventListener('click', () => { closeFileMenu(); doSave(); });
-$('miSaveAs').addEventListener('click', () => { closeFileMenu(); if (S.slides.length) showNameDlg(); else toast('Load some slides first.', true); });
+function doSave() { saveProject(); }
+$('miSave').addEventListener('click', () => { closeFileMenu(); saveProject(); });
+$('miSaveAs').addEventListener('click', () => { closeFileMenu(); saveProjectAs(); });
+$('miSaveFile').addEventListener('click', () => { closeFileMenu(); saveProjectAs(); });
+$('miOpenFile').addEventListener('click', () => { closeFileMenu(); $('projFilePick').click(); });
 $('miImportFiles').addEventListener('click', () => { closeFileMenu(); $('filePick').click(); });
 $('miImportFolder').addEventListener('click', () => { closeFileMenu(); $('dirPick').click(); });
 $('miClear').addEventListener('click', () => { closeFileMenu(); clearDeck(); });
+$('projFilePick').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) openProjectFile(f); e.target.value = ''; });
 
-function commitProjectName() {
-  const name = $('projNameInput').value.trim();
-  if (!name) return;
-  if (saveProject(name)) $('nameDlg').classList.remove('on');
-}
-$('projNameOk').addEventListener('click', commitProjectName);
-$('projNameCancel').addEventListener('click', () => $('nameDlg').classList.remove('on'));
-$('projNameInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') commitProjectName();
-  if (e.key === 'Escape') $('nameDlg').classList.remove('on');
-  e.stopPropagation();
-});
-
-// Ctrl+S gemmer, Ctrl+, åbner Preferences
+// Ctrl+S gemmer projektet, Ctrl+, åbner Preferences
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); doSave(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); saveProject(); }
   if ((e.ctrlKey || e.metaKey) && e.key === ',') { e.preventDefault(); openPrefs(); }
 });
 
@@ -2149,7 +2192,10 @@ fetch('/api/caps').then((r) => r.json()).then((c) => { if (c.version) S.appVersi
 // bruges standard-advarslen.
 const IS_ELECTRON = navigator.userAgent.includes('Electron');
 window.__ltDirty = () => !!(S.dirty && S.slides.length);
-window.__ltQuickSave = () => saveProject(S.projectName || autoProjectName());
+// ved lukning: gem lydløst hvis projektet allerede har en fil; ellers spring over
+// (en fil-vælger midt i en lukning er upraktisk — brugeren blev allerede spurgt)
+window.__ltQuickSave = async () => { if (S.fileHandle) await saveProject(); };
+window.__ltHasFile = () => !!S.fileHandle;
 if (!IS_ELECTRON) {
   window.addEventListener('beforeunload', (e) => {
     if (window.__ltDirty()) { e.preventDefault(); e.returnValue = ''; }
@@ -2199,60 +2245,50 @@ $('exportZip').addEventListener('click', () => { $('exportMenu').classList.remov
 document.addEventListener('click', (e) => { if (!e.target.closest('#exportMenu')) $('exportMenu').classList.remove('open'); });
 
 /* ------------------------------ start screen ------------------------------- */
-function showStart() {
-  buildStartRecent();
-  buildFolderList();
-  $('folderSheet').classList.remove('on');
+async function showStart() {
+  await refreshRecentsUI(); // fylder også startRecent
   $('startScreen').classList.add('on');
 }
 function hideStart() { $('startScreen').classList.remove('on'); }
 
-let startSel = null;
-function buildStartRecent() {
+let startSel = null; // valgt recent-record
+function buildStartRecent(recents) {
   const list = $('startRecent');
+  if (!list) return;
   list.innerHTML = '';
   startSel = null;
   $('startOpen').disabled = true;
-  const projects = listProjects();
-  $('startOpen').closest('.start-actions').style.display = projects.length ? '' : 'none';
-  if (!projects.length) {
-    list.innerHTML = '<div class="recent-empty">No saved projects yet.<br>Start a new one on the right →</div>';
+  $('startOpen').closest('.start-actions').style.display = recents && recents.length ? '' : 'none';
+  if (!recents || !recents.length) {
+    list.innerHTML = '<div class="recent-empty">No recent projects yet.<br>Start a new one, or open a .ltproj file →</div>';
     return;
   }
-  for (const p of projects) {
+  for (const r of recents) {
     const b = document.createElement('button');
     b.className = 'recent-item';
-    b.innerHTML = '<div><div class="nm"></div><div class="sub"></div></div><span class="dt"></span><button class="del" title="Delete">✕</button>';
-    b.querySelector('.nm').textContent = p.name;
-    b.querySelector('.sub').textContent = (p.deckKey || '').split('/').pop() || '';
-    b.querySelector('.dt').textContent = new Date(p.savedAt).toLocaleDateString();
-    b.addEventListener('click', (e) => {
-      if (e.target.closest('.del')) {
-        storeProjects(listProjects().filter((x) => x.name !== p.name));
-        buildStartRecent();
-        return;
-      }
+    b.innerHTML = '<div><div class="nm"></div><div class="sub"></div></div><span class="dt"></span><button class="del" title="Remove from recents">✕</button>';
+    b.querySelector('.nm').textContent = r.name;
+    b.querySelector('.sub').textContent = r.deckName || '';
+    b.querySelector('.dt').textContent = new Date(r.savedAt).toLocaleDateString();
+    b.addEventListener('click', async (e) => {
+      if (e.target.closest('.del')) { e.stopPropagation(); await idbDel(r.id); refreshRecentsUI(); return; }
       list.querySelectorAll('.recent-item').forEach((x) => x.classList.toggle('on', x === b));
-      startSel = p.name;
-      $('startOpen').disabled = false;
+      startSel = r; $('startOpen').disabled = false;
     });
-    b.addEventListener('dblclick', () => { hideStart(); openProject(p.name); });
+    b.addEventListener('dblclick', () => { hideStart(); openRecent(r); });
     list.appendChild(b);
   }
 }
-$('startOpen').addEventListener('click', () => { if (startSel) { hideStart(); openProject(startSel); } });
-$('startNew').addEventListener('click', () => { buildFolderList(); $('folderSheet').classList.add('on'); });
+$('startOpen').addEventListener('click', () => { if (startSel) { hideStart(); openRecent(startSel); } });
+// New project / Import = brugeren vælger selv sine slides (ingen auto-scan af PC'en)
+$('startNew').addEventListener('click', () => $('dirPick').click());
 $('startImport').addEventListener('click', () => $('filePick').click());
-$('folderSheetClose').addEventListener('click', () => $('folderSheet').classList.remove('on'));
-$('sheetImportFiles').addEventListener('click', () => $('filePick').click());
-$('sheetImportFolder').addEventListener('click', () => $('dirPick').click());
-$('pickRootVisible').addEventListener('click', async () => { await fetch('/api/pickroot'); await loadServerFolders(); buildFolderList(); $('folderSheet').classList.add('on'); });
+$('startOpenFile').addEventListener('click', () => $('projFilePick').click());
 $('miStart').addEventListener('click', () => { closeFileMenu(); showStart(); });
 
 /* ------------------------------ file pickers ------------------------------- */
-$('pickRoot').addEventListener('click', async () => { await fetch('/api/pickroot'); loadServerFolders(); });
-$('filePick').addEventListener('change', (e) => { hideStart(); loadFiles(e.target.files); });
-$('dirPick').addEventListener('change', (e) => { hideStart(); loadFiles(e.target.files); });
+$('filePick').addEventListener('change', (e) => { hideStart(); loadFiles(e.target.files); e.target.value = ''; });
+$('dirPick').addEventListener('change', (e) => { hideStart(); loadFiles(e.target.files); e.target.value = ''; });
 $('pickFiles').addEventListener('click', () => $('filePick').click());
 $('pickDir').addEventListener('click', () => $('dirPick').click());
 
@@ -2281,6 +2317,9 @@ async function handleDropEvent(e) {
     } else resolve();
   });
   for (const entry of entries) await walkEntry(entry);
+  // en .ltproj trukket ind åbnes som projekt
+  const proj = files.find((f) => /\.ltproj$/i.test(f.name));
+  if (proj) { hideStart(); openProjectFile(proj); return; }
   if (files.length) { hideStart(); loadFiles(files); }
 }
 window.addEventListener('dragover', (e) => { e.preventDefault(); if ($('startScreen').classList.contains('on')) $('startDrop').classList.add('over'); });
@@ -2288,7 +2327,7 @@ window.addEventListener('dragleave', (e) => { if (e.relatedTarget === null) $('s
 window.addEventListener('drop', handleDropEvent);
 
 // debug-hook til automatiseret test
-window.__lt = { S, loadServerFolder, renderAll, getSettings, resolveMode, geomFor, chooseRows, partsOf, layoutFor, slideBlob, drawSlide, zipWriter };
+window.__lt = { S, loadServerFolder, renderAll, getSettings, resolveMode, geomFor, chooseRows, partsOf, layoutFor, slideBlob, drawSlide, zipWriter, buildProjectBlob, openProjectBlob, readZip };
 
 applyPrefs(loadPrefs());
 restoreSettings();

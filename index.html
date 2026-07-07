@@ -24,6 +24,8 @@
     <div class="menu-drop" id="fileDrop">
       <button class="mi" id="miSave">Save <span class="kbd">Ctrl S</span></button>
       <button class="mi" id="miSaveAs">Save as…</button>
+      <button class="mi" id="miSaveFile">Save to file… <span class="kbd">.ltproj</span></button>
+      <button class="mi" id="miOpenFile">Open project file…</button>
       <div class="mi-sep"></div>
       <div class="mi-head">Recent projects</div>
       <div id="miRecent"></div>
@@ -230,6 +232,7 @@
   <div id="emptyState"></div>
   <input type="file" id="filePick" multiple accept="image/*" hidden>
   <input type="file" id="dirPick" webkitdirectory hidden>
+  <input type="file" id="projFilePick" accept=".ltproj,application/zip" hidden>
 </div>
 
 <!-- ============================ START SCREEN ============================ -->
@@ -265,29 +268,15 @@
           <div class="sc-ic">↧</div>
           <div><b>Import files</b><span>Choose images, or drag them in</span></div>
         </button>
-        <div class="start-drop" id="startDrop">Drag images or a folder anywhere</div>
+        <button class="start-card" id="startOpenFile">
+          <div class="sc-ic">⭑</div>
+          <div><b>Open project file</b><span>Load a saved .ltproj (settings + slides)</span></div>
+        </button>
+        <div class="start-drop" id="startDrop">Drag images, a folder, or a .ltproj file anywhere</div>
       </div>
     </div>
   </div>
 
-  <!-- New-project folder chooser (slides in) -->
-  <div class="start-sheet" id="folderSheet">
-    <div class="sheet-box">
-      <div class="sheet-head">
-        <div class="dlg-title">Choose slides</div>
-        <button class="icon-btn" id="folderSheetClose" title="Back">✕</button>
-      </div>
-      <div class="sheet-row" id="rootRowVisible" style="display:none">
-        <span id="rootPathLabel" class="path"></span>
-        <button class="btn-ghost" id="pickRootVisible">Change location…</button>
-      </div>
-      <div class="sheet-list" id="folderListVisible"></div>
-      <div class="sheet-foot">
-        <button class="btn-ghost" id="sheetImportFiles">Import files…</button>
-        <button class="btn-ghost" id="sheetImportFolder">Import folder…</button>
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- ============================ MODALS ============================ -->
