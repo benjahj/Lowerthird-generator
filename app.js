@@ -818,6 +818,8 @@ function getSettings() {
     layout: $('layoutMode').value,
     align: $('alignH').value,
     maxScale: +$('maxScale').value,
+    wordSpace: +$('wordSpace').value || 1,
+    lineSpace: +$('lineSpace').value || 1,
     bgMode: $('bgMode').value,
     sidebar: $('sidebarMode').value,
     furniture: $('furnitureMode').value,
@@ -1070,23 +1072,36 @@ function wordsOf(ana) {
       wd.w *= k; wd.h *= k; wd.above *= k; wd.below *= k; wd.lh *= k;
     }
   }
-  ana._words = { words, medLineH, joinGap: 0.4 * medLineH, rowGap: 0.5 * medLineH, pad: Math.max(2, ana.kx) };
+  // wordGapK/rowGap er BASIS-afstande (faktor × højde); brugerens Word/Line
+  // spacing-valg skaleres ovenpå via metricsCtx. Standarderne er strammere og
+  // ensartede — kildens vilkårlige (ofte lige-justerede) huller arves ikke.
+  ana._words = { words, medLineH, rowGap: 0.32 * medLineH, wordGapK: 0.3, pad: Math.max(2, ana.kx) };
   return ana._words;
 }
 
-// Mellemrum: naturlig afstand fra kilden, men normaliseret — meget brede
-// layout-huller fra sliden må ikke arves med over i lower third'en.
+// Ord-kontekst med brugerens afstands-valg skaleret ind. wordsOf caches uafhængigt
+// af indstillinger; dette letvægts-lag lægger Word/Line spacing ovenpå pr. render.
+function metricsCtx(ana, s) {
+  const w = wordsOf(ana);
+  const ws = s.wordSpace || 1, ls = s.lineSpace || 1;
+  if (ws === 1 && ls === 1) return w;
+  return { ...w, wordGapK: w.wordGapK * ws, rowGap: w.rowGap * ls };
+}
+
+// Mellemrum: ÉT ensartet ord-mellemrum overalt (baseret på linjehøjden, ikke de
+// enkelte ords højde — ellers får høje/understregede ord større huller og teksten
+// ser mærkelig ud). Kun bogstaver i samme fejl-opdelte ord holdes tætte.
 function natGapFn(ctx) {
+  const gap = ctx.wordGapK * ctx.medLineH;
   return (prev, cur) => {
-    const base = Math.max(ctx.medLineH, (prev.h + cur.h) / 2);
     if (cur.li === prev.li && cur.x0 >= prev.x1) {
+      const base = Math.max(ctx.medLineH, (prev.h + cur.h) / 2);
       const g = cur.x0 - prev.x1;
-      // små huller = bogstaver i SAMME ord (fejl-opdelt) → bevar tæt, INTET
-      // mellemrums-gulv (ellers bliver "lidt" til "li dt")
+      // meget lille hul = bogstaver i SAMME ord (fejl-opdelt) → bevar råt, så
+      // "lidt" ikke bliver til "li dt"
       if (g < 0.22 * base) return g;
-      return Math.min(Math.max(g, 0.25 * base), 0.55 * base);
     }
-    return ctx.joinGap;
+    return gap;
   };
 }
 
@@ -1291,7 +1306,7 @@ function partsOf(sl, s) {
 // Ombrydningen må gerne være forskellig pr. format (færre linjer på stream,
 // flere på LED) — kun tekstmængden (delene) er ens på tværs.
 function chooseRows(sl, s, mode, geoms, subset) {
-  const wctx = wordsOf(sl.ana);
+  const wctx = metricsCtx(sl.ana, s);
   const words = subset || wctx.words;
   if (!words.length) return null;
 
@@ -1463,7 +1478,7 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
 
     // --- tekst: fælles rækker, format-specifik skala ---
     if (rows && rows.length) {
-      const wctx = wordsOf(a);
+      const wctx = metricsCtx(a, s);
       const natGap = natGapFn(wctx);
       // valgt tekstfarve: pr. slide, ellers global, ellers original
       const effColor = sl.ov.color || s.textColor || null;
@@ -1511,7 +1526,8 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
 
 function layoutSig(sl, s) {
   return JSON.stringify([s.formats.map((f) => [f.W, f.H, f.canvas]), s.pad, s.layout, s.align,
-    s.maxScale, s.charLimit, s.split, s.sidebar, s.furniture, sl.ov.mode, sl.ov.img !== false, sl.ov.rows || 0]);
+    s.maxScale, s.charLimit, s.split, s.sidebar, s.furniture, s.wordSpace, s.lineSpace,
+    sl.ov.mode, sl.ov.img !== false, sl.ov.rows || 0]);
 }
 
 function layoutFor(sl, s) {
@@ -1917,7 +1933,8 @@ async function exportZip() {
 /* ---------------------------------- events --------------------------------- */
 
 const SETTING_IDS = ['pad', 'format', 'layoutMode', 'alignH', 'maxScale', 'charLimit',
-  'bgMode', 'sidebarMode', 'furnitureMode', 'textColorMode', 'textColor', 'splitMode'];
+  'bgMode', 'sidebarMode', 'furnitureMode', 'textColorMode', 'textColor', 'splitMode',
+  'wordSpace', 'lineSpace'];
 const NO_RENDER = new Set(['format']); // bruges først ved eksport
 const ON_COMMIT = new Set(['pad', 'charLimit']); // tal: render ved Enter/blur
 
