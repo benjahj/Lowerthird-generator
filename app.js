@@ -1222,7 +1222,10 @@ function partsOf(sl, s) {
   }
   if (!body.length) return [all];
 
-  const withHeader = (list) => list.map((p) => (header.length ? [...header, ...p] : p));
+  // Skriftsteds-chippen limes IKKE på hver del længere — den gemmes på resultatet
+  // (parts.header) og tegnes som et fast toptekst-bånd i drawSlide, så den står
+  // præcis samme sted og størrelse på alle dele i gruppen. Kun brødteksten flyder.
+  const attach = (list) => { list.header = header; return list; };
 
   // ÉN DEL PR. LINJE
   if (mode === 'line') {
@@ -1231,7 +1234,7 @@ function partsOf(sl, s) {
       if (!lines.length || lines[lines.length - 1][0].li !== w.li) lines.push([]);
       lines[lines.length - 1].push(w);
     }
-    return lines.length > 1 ? withHeader(lines) : [all];
+    return lines.length > 1 ? attach(lines) : [all];
   }
 
   // ÉN DEL PR. PUNKT/EMNE (opdel ved hvert versnummer ELLER punkt-markør)
@@ -1245,7 +1248,7 @@ function partsOf(sl, s) {
     }
     if (cur.length) items.push(cur);
     if (items.length <= 1) return mode === 'item' && sum(all) > limit ? autoSplit() : [all];
-    return withHeader(items);
+    return attach(items);
   }
 
   // AUTO (balanceret efter længde) — original opførsel
@@ -1280,7 +1283,7 @@ function partsOf(sl, s) {
     });
     flushRun();
     if (parts.length <= 1) return [all];
-    return withHeader(parts);
+    return attach(parts);
   }
 }
 
@@ -1355,6 +1358,42 @@ function tintWord(bmp, sx, sy, sw, sh, bg, color) {
   return { cvs: tintCvs, w, h };
 }
 
+// Tegner et sæt ombrudte rækker skaleret ind i box, med rækkernes top på yTop.
+// Bruges både til brødteksten og til det faste skriftsteds-bånd.
+function paintRows(ctx, bmp, a, wctx, natGap, rows, box, scale, effColor, yTop, align) {
+  const boxW = box.x1 - box.x0;
+  const p = wctx.pad;
+  let y = yTop;
+  for (const row of rows) {
+    let rowW = 0, above = 0, below = 0;
+    row.forEach((wd, i) => {
+      rowW += wd.w + (i > 0 ? natGap(row[i - 1], wd) : 0);
+      above = Math.max(above, wd.above);
+      below = Math.max(below, wd.below);
+    });
+    below = Math.max(0, below);
+    let x = align === 'center' ? box.x0 + (boxW - rowW * scale) / 2 : box.x0;
+    // alle ord i rækken flugter på fælles baseline
+    const baseline = y + above * scale;
+    row.forEach((wd, i) => {
+      if (i > 0) x += natGap(row[i - 1], wd) * scale;
+      // udvid kilden et par px, så antialiasede kanter kommer med.
+      // wd.k er individuel nedskalering af over-høje label-ord.
+      const rawW = wd.f.x1 - wd.f.x0, rawH = wd.f.y1 - wd.f.y0;
+      const ks = wd.k * scale;
+      const dyPos = baseline - wd.above * scale - p * ks;
+      if (effColor && wd.k === 1) {
+        const t = tintWord(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p, a.bg, effColor);
+        ctx.drawImage(t.cvs, 0, 0, t.w, t.h, x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
+      } else {
+        ctx.drawImage(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p, x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
+      }
+      x += wd.w * scale;
+    });
+    y = baseline + below * scale + wctx.rowGap * scale;
+  }
+}
+
 async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
   const bmp = await getBitmap(sl);
   const a = sl.ana;
@@ -1426,45 +1465,30 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
     if (rows && rows.length) {
       const wctx = wordsOf(a);
       const natGap = natGapFn(wctx);
-      const m = rowMetrics(rows, wctx);
+      // valgt tekstfarve: pr. slide, ellers global, ellers original
+      const effColor = sl.ov.color || s.textColor || null;
+      const align = s.align === 'center' ? 'center' : 'left';
       const boxW = g.box.x1 - g.box.x0, boxH = g.box.y1 - g.box.y0;
       if (boxW > 5 && boxH > 5) {
-        // aldrig mere end maxScale × kildens native opløsning
-        const scale = Math.min(scaleFor(m, boxW, boxH), s.maxScale);
-        // valgt tekstfarve: pr. slide, ellers global, ellers original
-        const effColor = sl.ov.color || s.textColor || null;
-        const totH = m.totH * scale;
-        let y = g.box.y0 + (boxH - totH) / 2 + (sl.ov.off / 100) * (boxH - totH) / 2;
-        for (const row of rows) {
-          let rowW = 0, above = 0, below = 0;
-          row.forEach((wd, i) => {
-            rowW += wd.w + (i > 0 ? natGap(row[i - 1], wd) : 0);
-            above = Math.max(above, wd.above);
-            below = Math.max(below, wd.below);
-          });
-          below = Math.max(0, below);
-          let x = s.align === 'center' ? g.box.x0 + (boxW - rowW * scale) / 2 : g.box.x0;
-          // alle ord i rækken flugter på fælles baseline
-          const baseline = y + above * scale;
-          row.forEach((wd, i) => {
-            if (i > 0) x += natGap(row[i - 1], wd) * scale;
-            // udvid kilden et par px, så antialiasede kanter kommer med.
-            // wd.k er individuel nedskalering af over-høje label-ord.
-            const p = wctx.pad;
-            const rawW = wd.f.x1 - wd.f.x0, rawH = wd.f.y1 - wd.f.y0;
-            const ks = wd.k * scale;
-            const dyPos = baseline - wd.above * scale - p * ks;
-            if (effColor && wd.k === 1) {
-              const t = tintWord(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p, a.bg, effColor);
-              ctx.drawImage(t.cvs, 0, 0, t.w, t.h,
-                x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
-            } else {
-              ctx.drawImage(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p,
-                x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
-            }
-            x += wd.w * scale;
-          });
-          y = baseline + below * scale + wctx.rowGap * scale;
+        // fast skriftsteds-bånd i toppen (kun ved fler-delte grupper): samme
+        // størrelse og placering på hver del, så referencen aldrig hopper rundt
+        const headerRow = layoutFor(sl, s).headerRow;
+        let bodyBox = g.box, bodyH = boxH;
+        if (headerRow) {
+          const hm = rowMetrics(headerRow, wctx);
+          const hScale = Math.min(boxW / hm.maxW, (0.34 * boxH) / hm.totH, s.maxScale);
+          paintRows(ctx, bmp, a, wctx, natGap, headerRow, g.box, hScale, effColor, g.box.y0, align);
+          const bandH = hm.totH * hScale + wctx.rowGap * hScale;
+          bodyBox = { x0: g.box.x0, y0: g.box.y0 + bandH, x1: g.box.x1, y1: g.box.y1 };
+          bodyH = bodyBox.y1 - bodyBox.y0;
+        }
+        if (bodyH > 5) {
+          const m = rowMetrics(rows, wctx);
+          // aldrig mere end maxScale × kildens native opløsning
+          const scale = Math.min(scaleFor(m, boxW, bodyH), s.maxScale);
+          const totH = m.totH * scale;
+          const yTop = bodyBox.y0 + (bodyH - totH) / 2 + (sl.ov.off / 100) * (bodyH - totH) / 2;
+          paintRows(ctx, bmp, a, wctx, natGap, rows, bodyBox, scale, effColor, yTop, align);
         }
       }
     }
@@ -1498,7 +1522,11 @@ function layoutFor(sl, s) {
   const parts = mode !== 'crop' ? partsOf(sl, s) : [null];
   const rows = parts.map((part) => s.formats.map((_, fi) =>
     mode !== 'crop' && part ? chooseRows(sl, s, mode, [geoms[fi]], part) : null));
-  sl._layout = { sig, mode, geoms, parts, rows };
+  // skriftsteds-chip som fast toptekst-bånd — kun når slidens tekst er delt i
+  // flere dele (ellers står chippen naturligt inline på den ene del)
+  const header = (parts.length > 1 && parts.header && parts.header.length) ? parts.header : null;
+  const headerRow = header ? [header] : null; // ét ord ⇒ én række
+  sl._layout = { sig, mode, geoms, parts, rows, headerRow };
   return sl._layout;
 }
 
