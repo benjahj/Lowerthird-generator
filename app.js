@@ -818,8 +818,6 @@ function getSettings() {
     layout: $('layoutMode').value,
     align: $('alignH').value,
     maxScale: +$('maxScale').value,
-    wordSpace: +$('wordSpace').value || 1,
-    lineSpace: +$('lineSpace').value || 1,
     bgMode: $('bgMode').value,
     sidebar: $('sidebarMode').value,
     furniture: $('furnitureMode').value,
@@ -1072,36 +1070,23 @@ function wordsOf(ana) {
       wd.w *= k; wd.h *= k; wd.above *= k; wd.below *= k; wd.lh *= k;
     }
   }
-  // wordGapK/rowGap er BASIS-afstande (faktor × højde); brugerens Word/Line
-  // spacing-valg skaleres ovenpå via metricsCtx. Standarderne er strammere og
-  // ensartede — kildens vilkårlige (ofte lige-justerede) huller arves ikke.
-  ana._words = { words, medLineH, rowGap: 0.32 * medLineH, wordGapK: 0.3, pad: Math.max(2, ana.kx) };
+  ana._words = { words, medLineH, joinGap: 0.4 * medLineH, rowGap: 0.5 * medLineH, pad: Math.max(2, ana.kx) };
   return ana._words;
 }
 
-// Ord-kontekst med brugerens afstands-valg skaleret ind. wordsOf caches uafhængigt
-// af indstillinger; dette letvægts-lag lægger Word/Line spacing ovenpå pr. render.
-function metricsCtx(ana, s) {
-  const w = wordsOf(ana);
-  const ws = s.wordSpace || 1, ls = s.lineSpace || 1;
-  if (ws === 1 && ls === 1) return w;
-  return { ...w, wordGapK: w.wordGapK * ws, rowGap: w.rowGap * ls };
-}
-
-// Mellemrum: ÉT ensartet ord-mellemrum overalt (baseret på linjehøjden, ikke de
-// enkelte ords højde — ellers får høje/understregede ord større huller og teksten
-// ser mærkelig ud). Kun bogstaver i samme fejl-opdelte ord holdes tætte.
+// Mellemrum: naturlig afstand fra kilden, men normaliseret — meget brede
+// layout-huller fra sliden må ikke arves med over i lower third'en.
 function natGapFn(ctx) {
-  const gap = ctx.wordGapK * ctx.medLineH;
   return (prev, cur) => {
+    const base = Math.max(ctx.medLineH, (prev.h + cur.h) / 2);
     if (cur.li === prev.li && cur.x0 >= prev.x1) {
-      const base = Math.max(ctx.medLineH, (prev.h + cur.h) / 2);
       const g = cur.x0 - prev.x1;
-      // meget lille hul = bogstaver i SAMME ord (fejl-opdelt) → bevar råt, så
-      // "lidt" ikke bliver til "li dt"
+      // små huller = bogstaver i SAMME ord (fejl-opdelt) → bevar tæt, INTET
+      // mellemrums-gulv (ellers bliver "lidt" til "li dt")
       if (g < 0.22 * base) return g;
+      return Math.min(Math.max(g, 0.25 * base), 0.55 * base);
     }
-    return gap;
+    return ctx.joinGap;
   };
 }
 
@@ -1237,10 +1222,7 @@ function partsOf(sl, s) {
   }
   if (!body.length) return [all];
 
-  // Skriftsteds-chippen limes IKKE på hver del længere — den gemmes på resultatet
-  // (parts.header) og tegnes som et fast toptekst-bånd i drawSlide, så den står
-  // præcis samme sted og størrelse på alle dele i gruppen. Kun brødteksten flyder.
-  const attach = (list) => { list.header = header; return list; };
+  const withHeader = (list) => list.map((p) => (header.length ? [...header, ...p] : p));
 
   // ÉN DEL PR. LINJE
   if (mode === 'line') {
@@ -1249,7 +1231,7 @@ function partsOf(sl, s) {
       if (!lines.length || lines[lines.length - 1][0].li !== w.li) lines.push([]);
       lines[lines.length - 1].push(w);
     }
-    return lines.length > 1 ? attach(lines) : [all];
+    return lines.length > 1 ? withHeader(lines) : [all];
   }
 
   // ÉN DEL PR. PUNKT/EMNE (opdel ved hvert versnummer ELLER punkt-markør)
@@ -1263,7 +1245,7 @@ function partsOf(sl, s) {
     }
     if (cur.length) items.push(cur);
     if (items.length <= 1) return mode === 'item' && sum(all) > limit ? autoSplit() : [all];
-    return attach(items);
+    return withHeader(items);
   }
 
   // AUTO (balanceret efter længde) — original opførsel
@@ -1298,7 +1280,7 @@ function partsOf(sl, s) {
     });
     flushRun();
     if (parts.length <= 1) return [all];
-    return attach(parts);
+    return withHeader(parts);
   }
 }
 
@@ -1306,7 +1288,7 @@ function partsOf(sl, s) {
 // Ombrydningen må gerne være forskellig pr. format (færre linjer på stream,
 // flere på LED) — kun tekstmængden (delene) er ens på tværs.
 function chooseRows(sl, s, mode, geoms, subset) {
-  const wctx = metricsCtx(sl.ana, s);
+  const wctx = wordsOf(sl.ana);
   const words = subset || wctx.words;
   if (!words.length) return null;
 
@@ -1371,42 +1353,6 @@ function tintWord(bmp, sx, sy, sw, sh, bg, color) {
   }
   tintCtx.putImageData(im, 0, 0);
   return { cvs: tintCvs, w, h };
-}
-
-// Tegner et sæt ombrudte rækker skaleret ind i box, med rækkernes top på yTop.
-// Bruges både til brødteksten og til det faste skriftsteds-bånd.
-function paintRows(ctx, bmp, a, wctx, natGap, rows, box, scale, effColor, yTop, align) {
-  const boxW = box.x1 - box.x0;
-  const p = wctx.pad;
-  let y = yTop;
-  for (const row of rows) {
-    let rowW = 0, above = 0, below = 0;
-    row.forEach((wd, i) => {
-      rowW += wd.w + (i > 0 ? natGap(row[i - 1], wd) : 0);
-      above = Math.max(above, wd.above);
-      below = Math.max(below, wd.below);
-    });
-    below = Math.max(0, below);
-    let x = align === 'center' ? box.x0 + (boxW - rowW * scale) / 2 : box.x0;
-    // alle ord i rækken flugter på fælles baseline
-    const baseline = y + above * scale;
-    row.forEach((wd, i) => {
-      if (i > 0) x += natGap(row[i - 1], wd) * scale;
-      // udvid kilden et par px, så antialiasede kanter kommer med.
-      // wd.k er individuel nedskalering af over-høje label-ord.
-      const rawW = wd.f.x1 - wd.f.x0, rawH = wd.f.y1 - wd.f.y0;
-      const ks = wd.k * scale;
-      const dyPos = baseline - wd.above * scale - p * ks;
-      if (effColor && wd.k === 1) {
-        const t = tintWord(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p, a.bg, effColor);
-        ctx.drawImage(t.cvs, 0, 0, t.w, t.h, x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
-      } else {
-        ctx.drawImage(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p, x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
-      }
-      x += wd.w * scale;
-    });
-    y = baseline + below * scale + wctx.rowGap * scale;
-  }
 }
 
 async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
@@ -1478,32 +1424,47 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
 
     // --- tekst: fælles rækker, format-specifik skala ---
     if (rows && rows.length) {
-      const wctx = metricsCtx(a, s);
+      const wctx = wordsOf(a);
       const natGap = natGapFn(wctx);
-      // valgt tekstfarve: pr. slide, ellers global, ellers original
-      const effColor = sl.ov.color || s.textColor || null;
-      const align = s.align === 'center' ? 'center' : 'left';
+      const m = rowMetrics(rows, wctx);
       const boxW = g.box.x1 - g.box.x0, boxH = g.box.y1 - g.box.y0;
       if (boxW > 5 && boxH > 5) {
-        // fast skriftsteds-bånd i toppen (kun ved fler-delte grupper): samme
-        // størrelse og placering på hver del, så referencen aldrig hopper rundt
-        const headerRow = layoutFor(sl, s).headerRow;
-        let bodyBox = g.box, bodyH = boxH;
-        if (headerRow) {
-          const hm = rowMetrics(headerRow, wctx);
-          const hScale = Math.min(boxW / hm.maxW, (0.34 * boxH) / hm.totH, s.maxScale);
-          paintRows(ctx, bmp, a, wctx, natGap, headerRow, g.box, hScale, effColor, g.box.y0, align);
-          const bandH = hm.totH * hScale + wctx.rowGap * hScale;
-          bodyBox = { x0: g.box.x0, y0: g.box.y0 + bandH, x1: g.box.x1, y1: g.box.y1 };
-          bodyH = bodyBox.y1 - bodyBox.y0;
-        }
-        if (bodyH > 5) {
-          const m = rowMetrics(rows, wctx);
-          // aldrig mere end maxScale × kildens native opløsning
-          const scale = Math.min(scaleFor(m, boxW, bodyH), s.maxScale);
-          const totH = m.totH * scale;
-          const yTop = bodyBox.y0 + (bodyH - totH) / 2 + (sl.ov.off / 100) * (bodyH - totH) / 2;
-          paintRows(ctx, bmp, a, wctx, natGap, rows, bodyBox, scale, effColor, yTop, align);
+        // aldrig mere end maxScale × kildens native opløsning
+        const scale = Math.min(scaleFor(m, boxW, boxH), s.maxScale);
+        // valgt tekstfarve: pr. slide, ellers global, ellers original
+        const effColor = sl.ov.color || s.textColor || null;
+        const totH = m.totH * scale;
+        let y = g.box.y0 + (boxH - totH) / 2 + (sl.ov.off / 100) * (boxH - totH) / 2;
+        for (const row of rows) {
+          let rowW = 0, above = 0, below = 0;
+          row.forEach((wd, i) => {
+            rowW += wd.w + (i > 0 ? natGap(row[i - 1], wd) : 0);
+            above = Math.max(above, wd.above);
+            below = Math.max(below, wd.below);
+          });
+          below = Math.max(0, below);
+          let x = s.align === 'center' ? g.box.x0 + (boxW - rowW * scale) / 2 : g.box.x0;
+          // alle ord i rækken flugter på fælles baseline
+          const baseline = y + above * scale;
+          row.forEach((wd, i) => {
+            if (i > 0) x += natGap(row[i - 1], wd) * scale;
+            // udvid kilden et par px, så antialiasede kanter kommer med.
+            // wd.k er individuel nedskalering af over-høje label-ord.
+            const p = wctx.pad;
+            const rawW = wd.f.x1 - wd.f.x0, rawH = wd.f.y1 - wd.f.y0;
+            const ks = wd.k * scale;
+            const dyPos = baseline - wd.above * scale - p * ks;
+            if (effColor && wd.k === 1) {
+              const t = tintWord(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p, a.bg, effColor);
+              ctx.drawImage(t.cvs, 0, 0, t.w, t.h,
+                x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
+            } else {
+              ctx.drawImage(bmp, wd.f.x0 - p, wd.f.y0 - p, rawW + 2 * p, rawH + 2 * p,
+                x - p * ks, dyPos, (rawW + 2 * p) * ks, (rawH + 2 * p) * ks);
+            }
+            x += wd.w * scale;
+          });
+          y = baseline + below * scale + wctx.rowGap * scale;
         }
       }
     }
@@ -1526,8 +1487,7 @@ async function drawSlide(sl, s, fmt, canvas, rows, mode, pixScale = 1) {
 
 function layoutSig(sl, s) {
   return JSON.stringify([s.formats.map((f) => [f.W, f.H, f.canvas]), s.pad, s.layout, s.align,
-    s.maxScale, s.charLimit, s.split, s.sidebar, s.furniture, s.wordSpace, s.lineSpace,
-    sl.ov.mode, sl.ov.img !== false, sl.ov.rows || 0]);
+    s.maxScale, s.charLimit, s.split, s.sidebar, s.furniture, sl.ov.mode, sl.ov.img !== false, sl.ov.rows || 0]);
 }
 
 function layoutFor(sl, s) {
@@ -1538,11 +1498,7 @@ function layoutFor(sl, s) {
   const parts = mode !== 'crop' ? partsOf(sl, s) : [null];
   const rows = parts.map((part) => s.formats.map((_, fi) =>
     mode !== 'crop' && part ? chooseRows(sl, s, mode, [geoms[fi]], part) : null));
-  // skriftsteds-chip som fast toptekst-bånd — kun når slidens tekst er delt i
-  // flere dele (ellers står chippen naturligt inline på den ene del)
-  const header = (parts.length > 1 && parts.header && parts.header.length) ? parts.header : null;
-  const headerRow = header ? [header] : null; // ét ord ⇒ én række
-  sl._layout = { sig, mode, geoms, parts, rows, headerRow };
+  sl._layout = { sig, mode, geoms, parts, rows };
   return sl._layout;
 }
 
@@ -1933,8 +1889,7 @@ async function exportZip() {
 /* ---------------------------------- events --------------------------------- */
 
 const SETTING_IDS = ['pad', 'format', 'layoutMode', 'alignH', 'maxScale', 'charLimit',
-  'bgMode', 'sidebarMode', 'furnitureMode', 'textColorMode', 'textColor', 'splitMode',
-  'wordSpace', 'lineSpace'];
+  'bgMode', 'sidebarMode', 'furnitureMode', 'textColorMode', 'textColor', 'splitMode'];
 const NO_RENDER = new Set(['format']); // bruges først ved eksport
 const ON_COMMIT = new Set(['pad', 'charLimit']); // tal: render ved Enter/blur
 
