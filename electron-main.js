@@ -107,9 +107,25 @@ function setupAutoUpdate() {
       if (r.response === 0) shell.openExternal(RELEASES_URL).catch(() => {});
     });
 
-    autoUpdater.checkForUpdates().catch(() => {});
-    // mind om det igen senere, hvis programmet står åbent længe (ikke midt i en download)
-    setInterval(() => { if (!downloading) autoUpdater.checkForUpdates().catch(() => {}); }, 4 * 3600 * 1000);
+    // brugeren kan slå "Receive beta updates" til i Preferences — læs valget fra
+    // appens localStorage før hvert tjek, så prereleases kun tilbydes ved opt-in
+    const wantsBeta = async () => {
+      try {
+        return await win.webContents.executeJavaScript(
+          "(JSON.parse(localStorage.getItem('ltfabrik.prefs')||'{}').beta === true)",
+        );
+      } catch { return false; }
+    };
+    const runCheck = async () => {
+      if (downloading) return;
+      try { autoUpdater.allowPrerelease = await wantsBeta(); } catch { /* */ }
+      autoUpdater.checkForUpdates().catch(() => {});
+    };
+
+    // tjek når siden er indlæst (så localStorage kan læses), og igen periodisk
+    if (win.webContents.isLoading()) win.webContents.once('did-finish-load', runCheck);
+    else runCheck();
+    setInterval(runCheck, 4 * 3600 * 1000);
   } catch { /* updater ikke tilgængelig i dev-kørsel */ }
 }
 

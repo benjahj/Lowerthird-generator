@@ -2232,7 +2232,7 @@ const ACCENTS = [
   { id: 'red', c: '#ff5a5f', hi: '#ff8085' },
   { id: 'teal', c: '#2fc6c0', hi: '#5ad9d4' },
 ];
-const DEFAULT_PREFS = { theme: 'dark', accent: 'amber', motion: false, reopen: true, format: 'png' };
+const DEFAULT_PREFS = { theme: 'dark', accent: 'amber', motion: false, reopen: true, format: 'png', beta: false };
 
 function loadPrefs() {
   let p = {};
@@ -2272,6 +2272,7 @@ function openPrefs() {
   }
   $('prefMotion').checked = !!p.motion;
   $('prefReopen').checked = !!p.reopen;
+  $('prefBeta').checked = !!p.beta;
   $('prefFormat').value = p.format;
   $('prefVersion').textContent = S.appVersion || 'local';
   $('prefsDlg').classList.add('on');
@@ -2285,6 +2286,7 @@ $('prefTheme').querySelectorAll('button').forEach((b) => {
 });
 $('prefMotion').addEventListener('change', () => { const p = loadPrefs(); p.motion = $('prefMotion').checked; savePrefs(p); applyPrefs(p); });
 $('prefReopen').addEventListener('change', () => { const p = loadPrefs(); p.reopen = $('prefReopen').checked; savePrefs(p); });
+$('prefBeta').addEventListener('change', () => { const p = loadPrefs(); p.beta = $('prefBeta').checked; savePrefs(p); });
 $('prefFormat').addEventListener('change', () => { const p = loadPrefs(); p.format = $('prefFormat').value; savePrefs(p); applyPrefs(p); markDirty(); renderAllSoon(); });
 $('prefsClose').addEventListener('click', () => $('prefsDlg').classList.remove('on'));
 $('prefsDlg').addEventListener('click', (e) => { if (e.target === $('prefsDlg')) $('prefsDlg').classList.remove('on'); });
